@@ -1,11 +1,13 @@
 # Node modules
 node_modules/
 auth_info_baileys/
+baileys_auth_info/
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+
 
 # Logs
 logs/

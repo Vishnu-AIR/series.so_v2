@@ -36,6 +36,7 @@ class UserService {
     if (!user) {
       const newUser = await User.create({
         jid,
+        phone: jid.split("@")[0],
         name: pushName,
         type: "new",
         profile: "Newly created user.",

@@ -9,7 +9,7 @@ const messageSchema = new mongoose.Schema({
     enum: ["new", "candidate", "freelancer", "rof", "roc", "hr", "client"],
   },
   reachOutModel: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: "ReachOut", // Assumes you have a 'ReachOut' model
     default: null,
   },
