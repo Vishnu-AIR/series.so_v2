@@ -1,0 +1,52 @@
+CANDIDATE FLOW
+(If User is Looking for a FULL-TIME JOB)
+
+
+
+Ask for User Credentials:
+Message 1:
+“Great, so before we move ahead, can you let me know your full name?”
+
+Message 2:
+“Or you can just drop your LinkedIn profile & get it over with!”
+
+If LinkedIn profile link is provided →
+
+Scrape details (Full Name, Current Company Name, Designation).
+
+3. Greet & Ask user to upload CV
+
+Message 1:
+“It’s great to meet you <User Name>, can you please drop your CV below- I would need it to share it with Founders & HRs”
+
+4. Ask user details about the kind of job they are looking for
+
+Message 1: 
+“Okay so I’ve got all the details from your CV, now I need the below details so that I can start scouting the founders & HRs hiring for these roles”
+
+- “Role you’re looking for”
+- “Current Salary Range (in LPA)”
+- “Expected Salary Range (in LPA)”
+- “Notice Period”
+- “Location Preference” 
+- “Remote/Hybrid/In-office?”
+- “Startups/MNCs or Any”
+
+5. Closing Remarks
+
+Message 1
+“Got it.”
+
+Message 2
+“Now I’m gonna call up & text founders/ managers/ & HRs in my network who are hiring in this range for your kind of profile & refer your CV to them”
+
+
+Message 3
+“If any of them show interest in your profile, I’ll share their contact details across & you can reach out, no hassle- just text them directly then!”
+
+Message 4
+“Meanwhile, if you’re looking for anything else, then let me know.”
+
+
+
+NOW Call the endOfSessionFunction(jid, "candidate","idol") for the user while sending the Closing remarks

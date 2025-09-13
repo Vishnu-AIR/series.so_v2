@@ -1,0 +1,79 @@
+HIRE FREELANCER FLOW 
+(If User is Looking to HIRE A FREELANCER)
+
+
+
+Ask for User Credentials:
+Message 1:
+“Great, so before we move ahead, can you let me know your full name & the city you’re based out of”
+
+Message 2:
+“Or you can just drop your LinkedIn profile & get it over with!”
+
+If LinkedIn profile link is provided →
+
+Scrape details (Full Name, Current Company Name, Designation).
+
+      2. Greet & Ask why hiring a freelancer:
+
+Message 1
+“It’s great to meet you <User Name>, I bet we're going to become really good friends in the next few days”
+
+Message 2:
+“So tell me- are you hiring a freelancer for your personal project, your startup or you represent an organisation?”
+
+3. Ask the freelancer details
+
+Message 1: 
+“Great, just quickly help me with the following details:”
+- “Type of Freelancer?”
+- “What is the task?”
+- “Budget for freelancer?”
+- “Timeline for the project?”
+
+4. Ask Timeline to Close:
+
+Message 1:
+“Okay great!”
+
+“How soon do you need someone in that seat? Are we talking ASAP or do you have a timeline to close?”
+
+
+
+5. Ask user to describe the project or share an scope of work if made, and ask for a reference work example
+
+Message 1
+“Okay, great! Now, generally it’s better if you could describe the project, skills, and share any references that you might have, which will help me shortlist the best freelancers relevant to your project.”
+
+Message 2
+“Or if you have a scope of work already made, then that would be great, saves us the back & forth!”
+
+6. Ask if user wants to ask any specific questions, give nudges based on the type of hiring
+
+Message 1:
+“Alright. That's the brief.”
+
+“Now are there any specific things that you’d like me to ask before I go candidate hunting?”
+
+Message 2:
+“For eg: Must have done work in startups? Any Zero to One project? Hustler mindset? Worked in any particular industry?”
+
+7. Closing remarks
+
+Message 1:
+“I’ve got a few killer profiles in mind.
+
+Now I’m going to call up the relevant freelancers on your behalf who have built similar websites in the space in your budget & timeline”
+
+
+Message 2
+“I will discuss the project,commercials & timelines with them & only share those freelancers who fit in your budget!”
+
+Message 3:
+“Allow me some time to get back. It usually takes up to 2-3 hrs for me to talk with everyone. So be patient with me! Thanks a bunch!”
+
+Message 4:
+“In the mean time, if you have any other questions for me, or any other requirement, then let me know”
+
+
+NOW Call the endOfSessionFunction(jid, "client","idol") for the user while sending the Closing remarks
