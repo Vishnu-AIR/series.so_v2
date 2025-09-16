@@ -1,4 +1,7 @@
+const { getSysPrompt } = require("../prompts/getPrompt");
 const ReachOutService = require("./reachOut.service");
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class OutreachService {
   /**
@@ -11,8 +14,17 @@ class OutreachService {
     this.userService = userService;
     this.queryService = queryService;
     this.llmService = llmService;
-    // Instantiate the new service here
-    this.reachOutService = new ReachOutService();
+    this.reachOutService = new ReachOutService(); // Instantiate the new service here
+    this.whatsAppService = null;
+  }
+
+  /**
+   * Allows the main application to inject the WhatsAppService instance.
+   * @param {WhatsAppService} waService - The instance of the WhatsApp service.
+   */
+  setWhatsAppService(waService) {
+    this.whatsAppService = waService;
+    console.log("[OutreachService] WhatsApp service has been set.");
   }
 
   async handleIncomingMessage(messageData) {
@@ -34,9 +46,26 @@ class OutreachService {
     // Fetch the user's message history
     const messageHistory = await this.userService.getMessageHistory(user.jid);
     // Now route based on user type
+    let prompt = messageData.content;
+    if (user.type === "rof" || user.type === "roc") {
+      const reachOut = await this.reachOutService.findReachOutById(
+        user.currentReachout
+      );
+      const author = await this.userService.findOrCreateUser(
+        reachOut.queryId.author_id
+      );
+      const NLP = reachOut.queryId.query;
+
+      prompt = `CONTEXT FOR THE REACHOUT: ${
+        author.name || "A user"
+      } is hiring for a role: "${NLP}".
+        
+        
+        USER MESSAGE: ${messageData.content}`;
+    }
     const llmRes = await this.llmService.generateGeneralReply(
       user,
-      messageData.content,
+      prompt,
       messageHistory.slice(0, -1)
     );
     this.userService.saveMessage({
@@ -46,111 +75,418 @@ class OutreachService {
       content: llmRes,
     });
     return llmRes;
-
-    // switch (user.type) {
-    //     case 'new':
-    //         return this.handleNewUser(user, messageHistory);
-
-    //     case 'idol':
-    //         return this.handleIdolUser(user, messageHistory);
-
-    //     case 'roc':
-    //     case 'rof': // Combines 'roc' and 'rof'
-    //         return this.handleOutreachResponse(user, messageHistory);
-    //     case 'candidate':
-    //     case 'freelancer':
-    //     case 'client':
-    //     case 'hr':
-    //         return this.handleEstablishedUser(user, messageHistory);
-
-    //     default:
-    //         console.warn(`Unhandled user type: ${user.type}`);
-    //         return "I'm not sure how to handle that right now.";
-    // }
   }
 
-  /**
-   * Handles a message from an "idol" user (a potential candidate who messaged us first).
-   */
-  async handleIdolUser(user, messageHistory) {
-    // 1. Check for any 'held' reach-outs for this user.
-    const heldReachOuts = await this.reachOutService.findHeldReachOutsForUser(
-      user._id
+  // Tool handler for ending a session and updating user type
+  async handleEndOfSession(args) {
+    const { jid, userType, newUserType } = args;
+
+    console.log(
+      `[Tool Executed] Ending session for ${userType} with JID: ${jid}. Assigning new type: ${newUserType}.`
     );
+    let result;
+    try {
+      switch (userType) {
+        case "new":
+          if (!newUserType) {
+            console.warn("New user type not provided for 'new' user.");
+            result =
+              "Please specify if they are a candidate, freelancer, client, or HR.";
+            break;
+          }
+          // Update user type in DB and cache
+          const user = await this.userService.findOrCreateUser(jid);
+          await this.userService.updateUser(user._id, { type: newUserType });
+          // Inform the user about their updated status
+          result = `now reply as if you were an established ${newUserType}.`;
+          break;
 
-    if (heldReachOuts && heldReachOuts.length > 0) {
-      // 2. If reach-outs exist, inform the user and start the process.
-      const firstReachOut = heldReachOuts[0];
+        case "idol":
+          result = this.handleIdolUser(jid, newUserType);
+          break;
 
-      // Set user's current reachout and update their type to 'in_outreach'
-      await this.userService.updateUser(user._id, {
-        currentReachout: firstReachOut._id,
-        type: "in_outreach",
-      });
+        case "roc":
+        case "rof": // Combines 'roc' and 'rof'
+          result = this.handleReachOutUser(jid);
+          break;
 
-      // Update the reachout status from 'hold' to 'init'
-      await this.reachOutService.updateReachOutStatus(
-        firstReachOut._id,
-        "init"
+        case "candidate":
+        case "freelancer":
+          result = this.handleProfileUpdate(jid);
+          break;
+
+        case "client":
+        case "hr":
+          result = this.handleQuery(jid);
+          break;
+
+        default:
+          console.warn(`Unhandled user type: ${userType}`);
+          result = "I'm not sure what you mean.";
+      }
+      return { success: true, status: result };
+    } catch (error) {
+      console.error(
+        `[OutreachService] Error handling end of session: ${error.message}`
       );
-
-      // Formulate the introductory message using the populated query text.
-      const queryText = firstReachOut.queryId
-        ? firstReachOut.queryId.query
-        : "a potential opportunity";
-      return `Thanks for reaching out! It's great timing, as I have some updates for you regarding ${queryText}. Would you be open to discussing it?`;
-    } else {
-      // 3. If no held reach-outs, provide a general reply.
-      return this.llmService.generateGeneralReply(user.type, messageHistory);
+      return { success: false, status: "Error", error: error.message };
     }
   }
 
-  async handleNewUser(user, messageHistory) {
-    const { type } = await this.llmService.determineUserType(messageHistory);
+  //--------------------------------separate functions to handle each user type----------------------------
 
-    // As per the diagram, the LLM defines the user type. 'idol' is a likely outcome for candidates.
-    if (type && type !== "other") {
-      await this.userService.updateUser(user._id, { type });
-      return `Thanks for clarifying! I've updated your profile as a ${type}. How can I help you today?`;
+  async handleIdolUser(jid, newUserType) {
+    // Custom logic for 'idol' users
+    const haveReachOuts = await this.checkReachOut(jid);
+    if (haveReachOuts) {
+      return "reachOuts sent";
     }
-    return "Thanks for reaching out! To help me understand how I can assist, could you tell me a bit more about what you do?";
+    if (!newUserType) {
+      console.warn("New user type not provided for 'new' user.");
+      return "Please specify if they are a candidate, freelancer, client, or HR.";
+    }
+    // Update user type in DB and cache
+    const user = await this.userService.findOrCreateUser(jid);
+    await this.userService.updateUser(user._id, { type: newUserType });
+    // Inform the user about their updated status
+    return `now reply as if you were an established ${newUserType}.`;
   }
 
-  async handleOutreachResponse(user, messageHistory) {
-    const mockReachOut = { queryId: { query: "Software Engineer role" } }; // This should be fetched
-    const { decision } = await this.llmService.qualifyUserForReachOut(
-      mockReachOut,
-      messageHistory
+  async handleReachOutUser(jid) {
+    const user = await this.userService.findOrCreateUser(jid);
+    const getConversation = await this.userService.getMessageHistory(jid);
+    const reachOut = await this.reachOutService.findReachOutById(
+      user.currentReachout
+    );
+    const isQualify = await this.llmService.qualifyUserForReachOut(
+      user.type,
+      reachOut,
+      getConversation
     );
 
-    let finalUserType = user.type; // Default to current
-    // Here you would determine if they are a candidate or freelancer from the query.
-    if (decision === "qualify") {
-      finalUserType = "candidate";
+    if (isQualify === "qualify") {
+      await this.reachOutService.updateReachOutStatus(reachOut._id, "qualify");
+    } else if (isQualify === "fail") {
+      await this.reachOutService.updateReachOutStatus(reachOut._id, "fail");
+    } else {
+      return;
     }
-
+    const done = await this.queryService.isQuerySuccessful(
+      reachOut.queryId._id
+    );
+    if (done) {
+      const author = await this.userService.findOrCreateUser(
+        reachOut.queryId.author_id
+      );
+      if (author && author.type === "idol") {
+        await this.checkReachOut(author.jid);
+      }
+    }
+    //update user.type to idol and currentReachout to null
     await this.userService.updateUser(user._id, {
-      type: finalUserType,
+      type: "idol",
       currentReachout: null,
     });
+    await this.checkReachOut(jid);
+    return "reachOut ended";
 
-    if (decision === "qualify") {
-      return "That's great news! You seem like a good fit. We'll be in touch with the next steps shortly.";
-    } else if (decision === "fail") {
-      return "Thank you for your time. Based on your response, this doesn't seem to be the right fit at the moment.";
-    } else {
-      return "Thanks for the information. Could you please clarify a bit more about your experience with [specific skill]?";
+    // Custom logic for 'roc' and 'rof' users
+  }
+
+  async handleQuery(jid) {
+    const messageHistory = await this.userService.getMessageHistory(jid);
+    // update user type user type to idol and reply
+    // const candidates = await this.llmService.findAndAnalyzeCandidates(
+    //   messageHistory
+    // );
+    // analyze using LLM get candidates list
+    await this.makeReachOut(
+      jid,
+      `SDE-1 with 1 year experience, proficient in C++ and Java, strong in Data Structures, Algorithms, System Design, and Problem Solving, with Zero to One project experience, available ASAP, for any location, salary 14-15 LPA."
+Performing hybrid search for candidates..`,
+      [{ name: "Aryan Banwala", phone: "919104270427", metadata: {} }]
+    );
+    const user = await this.userService.findOrCreateUser(jid);
+    await this.userService.updateUser(user._id, {
+      type: "idol",
+      currentReachout: null,
+    });
+    await this.checkReachOut(jid);
+    return "Query processed and reachOuts initiated.";
+  }
+
+  async handleProfileUpdate(jid) {
+    const user = await this.userService.findOrCreateUser(jid);
+    const messageHistory = await this.userService.getMessageHistory(jid);
+    //update user.metadata
+    const updatedInfo = await this.llmService.generateGeneralReply(
+      user,
+      `Based on the user convo history and user current profile give all the new things that user have told and will be useful for his future reachouts 
+    
+    user current profile : ${user.metadata}`,
+      messageHistory
+    );
+    user.metadata.updatedInfo = updatedInfo;
+    //save user.type == "idol"
+    await this.userService.updateUser(user._id, {
+      type: "idol",
+      metadata: user.metadata,
+    });
+    await this.checkReachOut(jid);
+    //checkReachOut(jid)
+  }
+
+  //-------------------------Supporting functions----------------------------
+
+  // Check for pending reachOuts and engage the user
+  /**
+   * Checks for and processes pending reach-outs for a given user.
+   * @param {string} jid The user's JID.
+   * @returns {Promise<boolean>} True if a reach-out was processed, false otherwise.
+   */
+  async checkReachOut(jid) {
+    console.log(`[checkReachOut] Starting process for jid: ${jid}`);
+    try {
+      const messageHistory = await this.userService.getMessageHistory(jid);
+      //
+      //TODO: check if any successfull query results left
+      //
+      const reachOuts = await this.reachOutService.findHeldReachOutsForUser(
+        jid
+      );
+      console.log(
+        `[checkReachOut] Found: ${
+          reachOuts ? reachOuts.length : 0
+        } held reach-outs for jid: ${jid}`
+      );
+
+      let user = await this.userService.findOrCreateUser(jid);
+
+      if (reachOuts && reachOuts.length > 0) {
+        console.log(
+          `[checkReachOut] Engaging user ${jid} with pending reach-outs.`
+        );
+
+        // Engage with the user and provide updates
+        if (user.type === "new") {
+          await this.whatsAppService.sendMessage(
+            jid,
+            `Hey 👋, it’s Maya! Go ahead & save my contact. I have a cool opportunity for you.`
+          );
+        } else {
+          await this.whatsAppService.sendMessage(
+            jid,
+            `By the way i have few updates for you..`
+          );
+        }
+
+        for (const reachOut of reachOuts) {
+          console.log(
+            `[checkReachOut] Processing reachOut ID: ${reachOut._id} of type: ${reachOut.type}`
+          );
+
+          if (reachOut.type === "ask") {
+            const newUserType =
+              reachOut.queryId.author_type == "hr" ? "roc" : "rof";
+            const sysPrompt = getSysPrompt(newUserType);
+
+            console.log(
+              `[checkReachOut] Updating user ${user._id} type to '${newUserType}' and setting currentReachout to ${reachOut._id}.`
+            );
+            user = await this.userService.updateUser(user._id, {
+              type: newUserType,
+              currentReachout: reachOut._id,
+            });
+
+            const context = `
+            You are about to start a conversation with user: ${
+              user.name || "a user"
+            }.
+            The opportunity is about: "${reachOut.queryId.query}".
+            This opportunity was created by a user who is a(n) "${
+              reachOut.queryId.author_type
+            } at CirclePe name Vishnu mathur".
+          `;
+            const task =
+              "Your task is to craft a smooth opening message that introduces the opportunity and asks if they are interested in learning more. Follow flow defined in your system prompt.";
+
+            console.log(
+              `[checkReachOut] Generating LLM response for 'ask' flow.`
+            );
+
+            const llmResponse = await this.llmService.generateCustomReply(
+              sysPrompt,
+              `${context}\n\n${task}`,
+              messageHistory
+            );
+
+            console.log(
+              `[checkReachOut] LLM response generated. Saving message to history.`
+            );
+
+            await this.userService.saveMessage({
+              jid: user.jid,
+              by: "model",
+              type: user.type,
+              content: llmResponse,
+            });
+
+            console.log(
+              `[checkReachOut] Sending 'ask' opening message to ${jid}.`
+            );
+            await this.whatsAppService.sendMessage(jid, llmResponse);
+
+            console.log(
+              `[checkReachOut] Updating reachOut ${reachOut._id} status to 'init'.`
+            );
+            await this.reachOutService.updateReachOutStatus(
+              reachOut._id,
+              "init"
+            );
+
+            console.log(
+              `[checkReachOut] Finished 'ask' flow for one reach-out. Returning true.`
+            );
+            return true;
+          }
+
+          // Handle 'notify' type
+          const sysPrompt = getSysPrompt("notify");
+
+          console.log(
+            `[checkReachOut] Generating LLM response for 'notify' flow.`
+          );
+
+          const context = `
+            You are about to start a conversation with user: ${
+              user.name || "a user"
+            }.
+            The opportunity is about: "${reachOut.queryId.query}".
+            This opportunity was created by a user who is a(n) "${
+              reachOut.queryId.author_type
+            } at CirclePe name Vishnu mathur".
+          `;
+          task =
+            "Your task is to craft a smooth opening message that introduces the opportunity and asks if they are interested in learning more. Follow flow defined in your system prompt.";
+
+          const llmResponse = await this.llmService.generateCustomReply(
+            sysPrompt,
+            `${context}\n\n${task}`,
+            messageHistory
+          );
+          console.log(`[checkReachOut] LLM response generated.`);
+
+          console.log(
+            `[checkReachOut] Updating reachOut ${reachOut._id} status to 'qualify'.`
+          );
+          await this.reachOutService.updateReachOutStatus(
+            reachOut._id,
+            "qualify"
+          );
+
+          console.log(
+            `[checkReachOut] Saving 'notify' message to history for ${jid}.`
+          );
+          await this.userService.saveMessage({
+            jid: user.jid,
+            by: "model",
+            type: user.type,
+            content: llmResponse,
+          });
+
+          console.log(`[checkReachOut] Sending 'notify' message to ${jid}.`);
+          await this.whatsAppService.sendMessage(jid, llmResponse);
+        }
+        console.log(
+          `[checkReachOut] Finished processing all reach-outs. Returning true.`
+        );
+        return true;
+      }
+
+      console.log(
+        `[checkReachOut] No held reach-outs for jid: ${jid}. No action taken.`
+      );
+      console.log(`[checkReachOut] Returning false.`);
+      return false;
+    } catch (error) {
+      console.error(
+        `[checkReachOut] An unexpected error occurred for jid: ${jid}. Error:`,
+        error
+      );
+      // On error, we return false to indicate the process was not successful.
+      return false;
     }
   }
 
-  async handleEstablishedUser(user, prompt, messageHistory) {
-    const llmRes = this.llmService.generateGeneralReply(
-      user.type,
-      prompt,
-      messageHistory
+  // Function to create reachOuts based on candidates from LLM analysis
+  async makeReachOut(authorId, NLP, candidates) {
+    console.log(
+      `[makeReachOut] Initiating reachOut creation for authorId: ${authorId}`
     );
-
-    return llmRes;
+    // make a query with status init and get queryId
+    const query = await this.queryService.createQuery(authorId, NLP);
+    console.log(
+      `[makeReachOut] Query created with ID: ${query._id} for NLP: "${NLP}"`
+    );
+    // loop through the candidates format : [{name,phone, metadata}, {name,phone, metadata}]
+    for (const candidate of candidates) {
+      if (!candidate || !candidate.phone) {
+        console.warn(
+          `[makeReachOut] Skipping candidate due to missing data: ${JSON.stringify(
+            candidate
+          )}`
+        );
+        continue;
+      }
+      const jid = `${candidate.phone}@s.whatsapp.net`;
+      console.log(
+        `[makeReachOut] Processing candidate: ${candidate.name}, JID: ${jid}`
+      );
+      // check candidate in db if not found create as user as "new"
+      const user = await this.userService.findOrCreateUser(jid, candidate.name);
+      console.log(
+        `[makeReachOut] User found/created with ID: ${user._id}, type: ${user.type}`
+      );
+      // update profile user.metadata==candidate.metdata
+      if (!user.metadata) {
+        await this.userService.updateUser(user._id, {
+          metadata: candidate.metadata,
+        });
+        console.log(
+          `[makeReachOut] Updated user metadata for user ID: ${user._id}`
+        );
+      }
+      // here anaylze based on user profile that wether need to ask user or notify him
+      let type = "notify";
+      if (
+        query.author_type == "client" ||
+        (query.author_type == "hr" && user.type == "new")
+      ) {
+        type = "ask";
+      }
+      console.log(
+        `[makeReachOut] Determined reachOut type: ${type} for user ID: ${user._id}`
+      );
+      // save a reachOut to him from author with status:hold
+      await this.reachOutService.createReachOut({
+        targetId: user.jid,
+        queryId: query._id,
+        status: "hold",
+        type: type,
+      });
+      console.log(
+        `[makeReachOut] Created reachOut for user JID: ${user.jid}, query ID: ${query._id}, type: ${type}`
+      );
+      await this.checkReachOut(user.jid);
+      await delay(1000); // Adding a small delay to avoid overwhelming the system
+      console.log(
+        `[makeReachOut] checkReachOut triggered for user JID: ${user.jid}`
+      );
+    }
+    console.log(
+      `[makeReachOut] Finished processing all candidates for authorId: ${authorId}`
+    );
+    // loop end
   }
 }
 

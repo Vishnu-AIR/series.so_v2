@@ -6,7 +6,7 @@ const messageSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ["new", "candidate", "freelancer", "rof", "roc", "hr", "client"],
+    enum: ["new", "candidate", "freelancer", "rof", "roc", "hr", "client","idol"],
   },
   reachOutModel: {
     type: mongoose.Schema.Types.ObjectId,

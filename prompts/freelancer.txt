@@ -57,4 +57,4 @@ Message 3
 Message 4
 “Freelancing is a game of patience, so bear with me, but I promise, that one afternoon you’ll get a call from me telling you about a client & all of a sudden, we’ll be talking business”
 
-NOW Call the endOfSessionFunction(jid, "freelancer","idol") for the user while sending the Closing remarks
+NOW Call the handleEndOfSession(jid, "freelancer","idol") for the user while sending the Closing remarks

@@ -76,4 +76,4 @@ Message 4:
 “In the mean time, if you have any other questions for me, or any other requirement, then let me know”
 
 
-NOW Call the endOfSessionFunction(jid, "client","idol") for the user while sending the Closing remarks
+NOW Call the handleEndOfSession(jid, "client","idol") for the user while sending the Closing remarks

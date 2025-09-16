@@ -11,8 +11,7 @@ const querySchema = new Schema(
      * Links to the 'User' collection.
      */
     author_id: {
-      type: Schema.Types.ObjectId,
-      ref: "User", // Assumes you have a 'User' model
+      type: String,
       required: true,
     },
 

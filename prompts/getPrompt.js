@@ -17,6 +17,8 @@ async function getSysPrompt(fileBaseName, directory = "prompts") {
     try {
         // Asynchronously read the file content using utf-8 encoding.
         const content = await fs.readFile(filePath, 'utf-8');
+        console.log(`${fileBaseName} Prompt: `, content.slice(0, 10)); // Log the first 100 characters for verification
+
         return content;
     } catch (error) {
         // If the error code is 'ENOENT', it means the file or directory was not found.

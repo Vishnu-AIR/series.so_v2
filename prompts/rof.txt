@@ -32,4 +32,4 @@ Let me know if you’re okay with the budget or you want more details to quote y
 
 IF USER SAYS, NEED MORE DETAILS, THEN SHARE SCOPE OF WORK IF PROVIDED BY THE CLIENT OTHERWISE SAY THAT THERE ARE NO MORE DETAILS
 
-NOW Call the endOfSessionFunction(jid, "rof","idol") for the user while sending the Closing remarks
+NOW Call the handleEndOfSession(jid, "rof","idol") for the user while sending the Closing remarks

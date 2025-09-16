@@ -9,7 +9,9 @@ class QueryService {
    * Manages the lifecycle of recruitment queries.
    */
   async createQuery(authorId, queryText) {
-    const author = await User.findById(authorId).lean();
+    const author = await User.findOne({ jid: authorId }).lean();
+    console.log(author);
+
     if (!author || !["hr", "client"].includes(author.type)) {
       throw new Error("Only HR or Client users can create queries.");
     }

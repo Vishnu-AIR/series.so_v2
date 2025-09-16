@@ -49,4 +49,4 @@ Message 4
 
 
 
-NOW Call the endOfSessionFunction(jid, "candidate","idol") for the user while sending the Closing remarks
+NOW Call the handleEndOfSession(jid, "candidate","idol") for the user while sending the Closing remarks
