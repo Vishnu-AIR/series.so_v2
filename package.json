@@ -4,7 +4,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node app.js"
+    "start": "node app.js",
+    "dev": "nodemon --ignore baileys_auth_info app.js"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +19,7 @@
     "bullmq": "^5.58.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "mammoth": "^1.10.0",
     "mongoose": "^8.18.1",
     "nodemon": "^3.1.10",
     "pdf-parse": "^1.1.1",
