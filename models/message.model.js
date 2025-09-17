@@ -13,8 +13,13 @@ const messageSchema = new mongoose.Schema({
     ref: "ReachOut", // Assumes you have a 'ReachOut' model
     default: null,
   },
-  content: { type: String, required: true },
+  content: { type: String, default: "" },
   hasMedia: { type: Boolean, default: false },
+  mediaType: { 
+    type: String, 
+    enum: ["image", "video", "audio", "document", "sticker", "url", "null"], 
+    default: "null" 
+  },
   mediaUrl: { type: String, default: null },
   timestamp: { type: Date, default: Date.now },
 });

@@ -1,12 +1,23 @@
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion
-} = require('@whiskeysockets/baileys');
+// const {
+//     default: makeWASocket,
+//     useMultiFileAuthState,
+//     DisconnectReason,
+//     fetchLatestBaileysVersion
+//} = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
+const whatsAppHelper = require('../helpers/whatsapp.helpers');
 
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadContentFromMessage;
+
+async function loadBaileys() {
+    const baileys = await import('@whiskeysockets/baileys');
+    makeWASocket = baileys.default;
+    useMultiFileAuthState = baileys.useMultiFileAuthState;
+    DisconnectReason = baileys.DisconnectReason;
+    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+    downloadContentFromMessage = baileys.downloadContentFromMessage;
+}
 class WhatsAppService {
     /**
      * This service is a dedicated connector to the WhatsApp platform.
@@ -24,6 +35,8 @@ class WhatsAppService {
      * Initializes the Baileys client, sets up event listeners, and connects to WhatsApp.
      */
     async initialize() {
+        if (!makeWASocket) await loadBaileys();
+
         const { state, saveCreds } = await useMultiFileAuthState('baileys_auth_info');
         const { version } = await fetchLatestBaileysVersion();
 
@@ -72,18 +85,20 @@ class WhatsAppService {
         const message = m.messages[0];
         // Ignore notifications, status updates, and messages sent by the bot itself.
         if (!message.message || message.key.fromMe) return;
-
         const jid = message.key.remoteJid;
         const content = message.message.conversation || message.message.extendedTextMessage?.text || '';
         const pushName = message.pushName || 'User';
-
-        if (!content || !jid) return;
+        
+        if (!jid) return;
 
         console.log(`\n📥 [${new Date().toLocaleTimeString()}] Message from ${pushName} (${jid}): "${content}"`);
 
+        const {isMedia,mediaType} = whatsAppHelper.detectMessagemediaType(message);
+        let retrievedText = "";
+        if ( isMedia && mediaType == "document" ) retrievedText = await whatsAppHelper.extractDocumentText(message,downloadContentFromMessage,3000);
+        // more for audio and all
         // Pass the clean message data to the core logic handler.
-        const replyText = await this.outreachService.handleIncomingMessage({ jid, content, pushName });
-
+        const replyText = await this.outreachService.handleIncomingMessage({ jid, content, pushName, isMedia, mediaType, retrievedText });
         // If the handler returns a reply, send it back to the user.
         if (replyText) {
             await this.sendMessage(jid, replyText);

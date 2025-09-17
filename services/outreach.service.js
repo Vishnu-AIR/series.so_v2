@@ -42,7 +42,54 @@ class OutreachService {
       by: "user",
       type: user.type,
       content: messageData.content,
+
+      hasMedia: messageData.isMedia || false,
+      mediaType: messageData.mediaType || "null",
+      mediaUrl: messageData.mediaUrl || null, //need to be done from s3/aws
     });
+    if(messageData.isMedia && messageData.mediaType == "document"){
+      //wait a min i am checking the document - send this mssg
+      const waitMssg = "Wait a min... I am checking the data in the doc you sent";
+      this.whatsAppService.sendMessage(messageData.jid , waitMssg);
+      await this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: user.type,
+        content: waitMssg,
+      });
+
+      //check for the data inside
+      const resumeJson = await this.llmService.classifyDocumentText(messageData.jid,messageData.retrievedText);
+      if ( resumeJson.isResume ){
+        const gotResumeMssg = "Yes, we have recieved your resume, thnx for sharing that";
+        this.whatsAppService.sendMessage(messageData.jid , gotResumeMssg);
+        await this.userService.saveMessage({
+          jid: user.jid,
+          by: "model",
+          type: user.type,
+          content: gotResumeMssg,
+        });
+        await this.userService.saveMessage({
+          jid: user.jid,
+          by: "user",
+          type: user.type,
+          content: "Ok! So now you have got my resume, whats the next step?",
+        });
+        //we need to call the vectorFastApi server here 
+      }
+      else{
+        const notResumeMssg = "Sorry the doc you provided, we were not able to detect if that was your resume, plz try again.";
+        this.whatsAppService.sendMessage(messageData.jid , notResumeMssg);
+        this.userService.saveMessage({
+          jid: user.jid,
+          by: "model",
+          type: user.type,
+          content: notResumeMssg,
+        });
+        return;
+      }
+    }
+    
     // Fetch the user's message history
     const messageHistory = await this.userService.getMessageHistory(user.jid);
     // Now route based on user type
@@ -66,7 +113,7 @@ class OutreachService {
     const llmRes = await this.llmService.generateGeneralReply(
       user,
       prompt,
-      messageHistory.slice(0, -1)
+      messageHistory.reverse()
     );
     this.userService.saveMessage({
       jid: user.jid,
@@ -226,7 +273,7 @@ Performing hybrid search for candidates..`,
     user current profile : ${user.metadata}`,
       messageHistory
     );
-    user.metadata.updatedInfo = updatedInfo;
+    // user.metadata.updatedInfo = updatedInfo;
     //save user.type == "idol"
     await this.userService.updateUser(user._id, {
       type: "idol",
