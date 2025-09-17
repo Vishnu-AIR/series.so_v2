@@ -6,6 +6,7 @@
 //} = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
+const TypingManager = require('./typing.manager');
 const whatsAppHelper = require('../helpers/whatsapp.helpers');
 
 let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadContentFromMessage;
@@ -48,6 +49,7 @@ class WhatsAppService {
         });
 
         this.setupEventListeners(saveCreds);
+        this.typing = new TypingManager(this.sock, { heartbeatMs: 4000 });
     }
 
     /**
@@ -98,7 +100,10 @@ class WhatsAppService {
         if ( isMedia && mediaType == "document" ) retrievedText = await whatsAppHelper.extractDocumentText(message,downloadContentFromMessage,3000);
         // more for audio and all
         // Pass the clean message data to the core logic handler.
+        await this.markLastMessageRead(message);
+        await this.typing.startTyping(jid);
         const replyText = await this.outreachService.handleIncomingMessage({ jid, content, pushName, isMedia, mediaType, retrievedText });
+        await this.typing.stopTyping(jid);
         // If the handler returns a reply, send it back to the user.
         if (replyText) {
             await this.sendMessage(jid, replyText);
@@ -118,7 +123,16 @@ class WhatsAppService {
             console.error(`❌ Failed to send message to ${jid}:`, error);
         }
     }
+
+    async markLastMessageRead(message) {
+        try {
+            await this.sock.readMessages([message.key]);
+            console.log(`✅ Marked message from ${message.key.remoteJid} as read`);
+        } catch (err) {
+            console.error("❌ Failed to mark last message as read", err);
+        }
+    }
+
 }
 
 module.exports = WhatsAppService;
-
