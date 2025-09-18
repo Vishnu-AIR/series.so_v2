@@ -1,9 +1,13 @@
 const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
 
 const whatsAppHelper = {};
 
-whatsAppHelper.detectMessagemediaType = function(message) {
+whatsAppHelper.detectMessagemediaType = function(message,jid = null,fileBuffer = null) {
     if (!message?.message) {
         return { isMedia: false, mediaType: 'unknown' };
     }
@@ -25,7 +29,27 @@ whatsAppHelper.detectMessagemediaType = function(message) {
     );
 
     if (foundType) {
-        return { isMedia: true, mediaType: typeMap[foundType] };
+      const fileType = typeMap[foundType];
+
+      // Here you’d normally decode/download the actual file buffer from WhatsApp message
+      // For now, assume you already have the buffer + extension
+      const extension =
+        message.extension ||
+        (fileType === "image"
+          ? "jpg"
+          : fileType === "video"
+          ? "mp4"
+          : fileType === "audio"
+          ? "mp3"
+          : fileType === "document"
+          ? "pdf"
+          : "bin");
+      let savedPath = null;
+      if (fileBuffer) {
+        savedPath = saveMediaFile(fileBuffer, jid, fileType, extension);
+      }
+
+      return { isMedia: true, mediaType: fileType, savedPath };
     }
 
     // If no media type matched → treat as text
@@ -90,5 +114,64 @@ whatsAppHelper.extractDocumentText = async function (
 
   return extractedText;
 };
+
+
+/**
+ * Generate a random file name with extension
+ */
+function generateRandomFileName(extension = "") {
+  const randomStr = crypto.randomBytes(8).toString("hex");
+  return extension ? `${randomStr}.${extension}` : randomStr;
+}
+
+/**
+ * Saves a file buffer into static/whatsapp/{jid}/{file_type}/random_name.ext
+ * Returns the relative file path.
+ *
+ * @param {Buffer} fileBuffer - binary data
+ * @param {string} jid - WhatsApp JID
+ * @param {string} fileType - e.g. 'image', 'video', 'document'
+ * @param {string} extension - file extension without dot
+ * @returns {string} relative file path
+ */
+function saveMediaFile(fileBuffer, jid, fileType, extension) {
+  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+    console.error("❌ saveMediaFile: fileBuffer invalid", {
+      receivedType: typeof fileBuffer,
+      isBuffer: Buffer.isBuffer(fileBuffer),
+    });
+    throw new Error("saveMediaFile: fileBuffer must be a Buffer");
+  }
+  if (!jid) {
+    console.error("❌ saveMediaFile: jid missing");
+    throw new Error("saveMediaFile: jid is required");
+  }
+
+  const baseDir = path.join("static", "whatsapp", jid, fileType);
+  if (!fs.existsSync(baseDir)) {
+    fs.mkdirSync(baseDir, { recursive: true });
+    console.log(`📂 Created directory: ${baseDir}`);
+  }
+
+  const filename = generateRandomFileName(extension);
+  const filePath = path.join(baseDir, filename);
+
+  try {
+    fs.writeFileSync(filePath, fileBuffer);
+    console.log(
+      `✅ File saved: ${filePath} (${fileBuffer.length} bytes, type=${fileType}, ext=${extension})`
+    );
+  } catch (err) {
+    console.error("❌ Failed to save file:", {
+      path: filePath,
+      error: err.message,
+    });
+    throw err;
+  }
+
+  return filePath; // relative path
+}
+
+
 
 module.exports = whatsAppHelper;
