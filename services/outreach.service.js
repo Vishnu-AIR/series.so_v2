@@ -49,23 +49,35 @@ class OutreachService {
       mediaType: messageData.mediaType || "null",
       mediaUrl: messageData.mediaUrl || null, //need to be done from s3/aws
     });
-    
-    if (messageData.isMedia && messageData.mediaType == "linkedinUrl"){
-      const shudContinue = await this.handleLinkedinFlow(messageData,user);
-      if ( !shudContinue ) return;
-    }
-    else if (user.type == "candidate" && messageData.isMedia && messageData.mediaType == "document") {
-      const shudContinue = await this.handleCandidateDocFlow(messageData,user);
-      if ( !shudContinue ) return;
-    }
-    else if ( user.type == "freelancer" && messageData.isMedia && messageData.mediaType == "url" ){
-      const shudContinue = await this.handleFreelancerDataFlow(messageData,user);
+
+    if (messageData.isMedia && messageData.mediaType == "linkedinUrl") {
+      const shudContinue = await this.handleLinkedinFlow(messageData, user);
+      if (!shudContinue) return;
+    } else if (
+      user.type == "candidate" &&
+      messageData.isMedia &&
+      messageData.mediaType == "document"
+    ) {
+      const shudContinue = await this.handleCandidateDocFlow(messageData, user);
+      if (!shudContinue) return;
+    } else if (
+      user.type == "freelancer" &&
+      messageData.isMedia &&
+      messageData.mediaType == "url"
+    ) {
+      const shudContinue = await this.handleFreelancerDataFlow(
+        messageData,
+        user
+      );
       //await this.whatsAppService.sendMessage(messageData.jid,"hn bhai milgyi teri url");
       return;
-    }
-    else if ( user.type == "freelancer" && messageData.isMedia && messageData.mediaType == "document" ){
-      const shudContinue = await this.handleCandidateDocFlow(messageData,user);
-      if ( !shudContinue ) return;
+    } else if (
+      user.type == "freelancer" &&
+      messageData.isMedia &&
+      messageData.mediaType == "document"
+    ) {
+      const shudContinue = await this.handleCandidateDocFlow(messageData, user);
+      if (!shudContinue) return;
     }
 
     // Fetch the user's message history
@@ -104,7 +116,7 @@ class OutreachService {
     return llmRes;
   }
 
-  async handleLinkedinFlow(messageData,user){
+  async handleLinkedinFlow(messageData, user) {
     return true;
     //to be implemented
     const messageHistory = await this.userService.getMessageHistory(user.jid);
@@ -123,7 +135,7 @@ class OutreachService {
       messageData.jid,
       messageHistory.reverse(),
       messageData.content
-    )
+    );
     if (linkedinJson.isLinkedinUserSame) {
       const gotLinkedinMssg =
         "Yes, we have recieved your linkedin, thnx for sharing that";
@@ -158,11 +170,10 @@ class OutreachService {
     return true;
   }
 
-  async handleCandidateDocFlow(messageData,user){
+  async handleCandidateDocFlow(messageData, user) {
     //wait a min i am checking the document - send this mssg
     const messageHistory = await this.userService.getMessageHistory(user.jid);
-    const waitMssg =
-      "Wait a min... I am checking the data in the doc you sent";
+    const waitMssg = "Wait a min... I am checking the data in the doc you sent";
     this.whatsAppService.sendMessage(messageData.jid, waitMssg);
     await this.userService.saveMessage({
       jid: user.jid,
@@ -176,12 +187,11 @@ class OutreachService {
       messageData.jid,
       messageData.retrievedText,
       messageHistory.reverse()
-    )
+    );
     if (resumeJson.isResume) {
       const gotResumeMssg =
         "Yes, we have recieved your resume, thnx for sharing that";
-      const gotResumeMssgToSave =
-        gotResumeMssg + JSON.stringify(resumeJson);
+      const gotResumeMssgToSave = gotResumeMssg + JSON.stringify(resumeJson);
       this.whatsAppService.sendMessage(messageData.jid, gotResumeMssg);
       await this.userService.saveMessage({
         jid: user.jid,
@@ -214,11 +224,10 @@ class OutreachService {
     return true;
   }
 
-  async handleFreelancerDataFlow(messageData,user){
+  async handleFreelancerDataFlow(messageData, user) {
     //wait a min i am checking the document - send this mssg
     const messageHistory = await this.userService.getMessageHistory(user.jid);
-    const waitMssg =
-      "Wait a min... I am checking the data in the url you sent";
+    const waitMssg = "Wait a min... I am checking the data in the url you sent";
     await this.whatsAppService.sendMessage(messageData.jid, waitMssg);
     await this.userService.saveMessage({
       jid: user.jid,
@@ -227,14 +236,16 @@ class OutreachService {
       content: waitMssg,
     });
     console.log(JSON.stringify(messageHistory.reverse(), null, 2));
-    const resultAfterUrlCheck = await this.llmService.classifyPortfolioMatchFromHistory(
-      messageData.jid
-      ,messageHistory.reverse()
-      ,messageData.content
-    );
-    if ( resultAfterUrlCheck.isPortfolioOfUser ){
+    const resultAfterUrlCheck =
+      await this.llmService.classifyPortfolioMatchFromHistory(
+        messageData.jid,
+        messageHistory.reverse(),
+        messageData.content
+      );
+    if (resultAfterUrlCheck.isPortfolioOfUser) {
       const gotPortfolioMssg =
-        "Yes, we have recieved your portfolio, thnx for sharing that" + JSON.stringify(resultAfterUrlCheck);
+        "Yes, we have recieved your portfolio, thnx for sharing that" +
+        JSON.stringify(resultAfterUrlCheck);
       const gotPortfolioMssgToSave =
         gotPortfolioMssg + JSON.stringify(resultAfterUrlCheck);
       this.whatsAppService.sendMessage(messageData.jid, gotResumeMssg);
@@ -251,8 +262,7 @@ class OutreachService {
         content: "Ok! So now you have got my portfolio, whats the next step?",
       });
       //we need to call the vectorFastApi server here
-    }
-    else{
+    } else {
       const notPortfolioMssg =
         "Sorry the url you provided, it seems this was not your portfolio, plz try again.";
       this.whatsAppService.sendMessage(messageData.jid, notPortfolioMssg);
@@ -315,7 +325,7 @@ class OutreachService {
           result = "I'm not sure what you mean.";
       }
       const sessionChangedText = `Session changed to ${newUserType}`;
-      await this.whatsAppService.sendMessage(jid,sessionChangedText)
+      await this.whatsAppService.sendMessage(jid, sessionChangedText);
       this.userService.saveMessage({
         jid: user.jid,
         by: "model",
@@ -364,9 +374,13 @@ class OutreachService {
 
     if (isQualify === "qualify") {
       await this.reachOutService.updateReachOutStatus(reachOut._id, "qualify");
-      userInfo = await this.llmService.genrateTheReachOutInfo(user, reachOut.queryId.query, reachOut.type, reachOut.queryId.author_type);
+      const userInfo = await this.llmService.genrateTheReachOutInfo(
+        user,
+        reachOut.queryId.query,
+        reachOut.type,
+        reachOut.queryId.author_type
+      );
       await this.reachOutService.updateReachOutUserInfo(reachOut._id, userInfo);
-      
     } else if (isQualify === "fail") {
       await this.reachOutService.updateReachOutStatus(reachOut._id, "fail");
     } else {
@@ -401,12 +415,10 @@ class OutreachService {
     //   messageHistory
     // );
     // analyze using LLM get candidates list
-    await this.makeReachOut(
-      jid,
-      `SDE-1 with 1 year experience, proficient in C++ and Java, strong in Data Structures, Algorithms, System Design, and Problem Solving, with Zero to One project experience, available ASAP, for any location, salary 14-15 LPA."
-Performing hybrid search for candidates..`,
-      [{ name: "Aryan Banwala", phone: "919104270427", metadata: {} }]
-    );
+    const NLP = await this.llmService.findAndAnalyzeCandidates(messageHistory);
+    await this.makeReachOut(jid, NLP, [
+      { name: "Aaditya mathur", phone: "918826019356", metadata: {} },
+    ]);
     const user = await this.userService.findOrCreateUser(jid);
     await this.userService.updateUser(user._id, {
       type: "idol",
@@ -453,16 +465,20 @@ Performing hybrid search for candidates..`,
         query._id,
         "qualify"
       );
-      const response = await this.llmService.genrateQuerySummary(reachouts, [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `Arrange the candidates form following reachouts according to this query: ${query.query}`,
-            },
-          ],
-        },
-      ], query.author_type);
+      const response = await this.llmService.genrateQuerySummary(
+        reachouts,
+        [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `Arrange the candidates form following reachouts according to this query: ${query.query}`,
+              },
+            ],
+          },
+        ],
+        query.author_type
+      );
       await this.userService.saveMessage({
         jid: user.jid,
         by: "model",
@@ -541,7 +557,7 @@ Performing hybrid search for candidates..`,
             The opportunity is about: "${reachOut.queryId.query}".
             This opportunity was created by a user who is a(n) "${
               reachOut.queryId.author_type
-            } at CirclePe name Vishnu mathur".
+            } ".
           `;
             const task =
               "Your task is to craft a smooth opening message that introduces the opportunity and asks if they are interested in learning more. Follow flow defined in your system prompt.";
@@ -600,9 +616,9 @@ Performing hybrid search for candidates..`,
             The opportunity is about: "${reachOut.queryId.query}".
             This opportunity was created by a user who is a(n) "${
               reachOut.queryId.author_type
-            } at CirclePe name Vishnu mathur".
+            }".
           `;
-          task =
+          const task =
             "Your task is to craft a smooth opening message that introduces the opportunity and asks if they are interested in learning more. Follow flow defined in your system prompt.";
 
           const llmResponse = await this.llmService.generateCustomReply(
@@ -656,9 +672,9 @@ Performing hybrid search for candidates..`,
 
   /**
    * Function to create reachOuts based on candidates from LLM analysis
-   * @param {*} authorId 
-   * @param {string} NLP 
-   * @param {Array<{name: string, phone: string, metadata: object}>} candidates 
+   * @param {*} authorId
+   * @param {string} NLP
+   * @param {Array<{name: string, phone: string, metadata: object}>} candidates
    */
   async makeReachOut(authorId, NLP, candidates) {
     console.log(
@@ -671,7 +687,7 @@ Performing hybrid search for candidates..`,
     );
     // loop through the candidates format : [{name,phone, metadata}, {name,phone, metadata}]
     for (const candidate of candidates) {
-      if (!candidate || !candidate.phone) {
+      if (!candidate || !candidate.phone ||  candidate.phone.length < 10) {
         console.warn(
           `[makeReachOut] Skipping candidate due to missing data: ${JSON.stringify(
             candidate
@@ -680,6 +696,14 @@ Performing hybrid search for candidates..`,
         continue;
       }
       const jid = `${candidate.phone}@s.whatsapp.net`;
+      if( jid==authorId){
+        console.warn(
+          `[makeReachOut] Skipping candidate (same as author): ${JSON.stringify(
+            candidate
+          )}`
+        );
+        continue;
+      }
       console.log(
         `[makeReachOut] Processing candidate: ${candidate.name}, JID: ${jid}`
       );
@@ -705,8 +729,13 @@ Performing hybrid search for candidates..`,
         (query.author_type == "hr" && user.type == "new")
       ) {
         type = "ask";
-      }else{
-        userInfo = await this.llmService.genrateTheReachOutInfo(user, query, type, query.author_type);
+      } else {
+        userInfo = await this.llmService.genrateTheReachOutInfo(
+          user,
+          query,
+          type,
+          query.author_type
+        );
       }
       console.log(
         `[makeReachOut] Determined reachOut type: ${type} for user ID: ${user._id}`

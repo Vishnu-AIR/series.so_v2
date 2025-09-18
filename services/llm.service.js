@@ -15,8 +15,8 @@ async function sleep(ms) {
 }
 
 function isTransientError(err) {
-  const msg = err && (err.message || err.toString()) || "";
-  const code = err && (err.statusCode || err.code || err.status) || null;
+  const msg = (err && (err.message || err.toString())) || "";
+  const code = (err && (err.statusCode || err.code || err.status)) || null;
   // treat 429, 5xx, "overload", "temporar", "unavailable" as transient
   return (
     (typeof code === "number" && [429, 500, 502, 503, 504].includes(code)) ||
@@ -44,13 +44,21 @@ async function executeWithRetry(op, opts = {}) {
         throw err;
       }
       // transient -> compute backoff + jitter and wait
-      const exponential = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
+      const exponential = Math.min(
+        maxDelayMs,
+        baseDelayMs * 2 ** (attempt - 1)
+      );
       const jitter = Math.floor(Math.random() * Math.min(1000, exponential));
       const wait = exponential + jitter;
       if (typeof opts.onRetry === "function") {
-        try { opts.onRetry({ attempt, maxAttempts, err, wait }); } catch (_) {}
+        try {
+          opts.onRetry({ attempt, maxAttempts, err, wait });
+        } catch (_) {}
       } else {
-        console.warn(`Transient error (attempt ${attempt}/${maxAttempts}). Retrying in ${wait}ms.`, err && (err.message || err));
+        console.warn(
+          `Transient error (attempt ${attempt}/${maxAttempts}). Retrying in ${wait}ms.`,
+          err && (err.message || err)
+        );
       }
       await sleep(wait);
       // then loop to retry
@@ -69,7 +77,19 @@ async function generateReply(
   toolFunctions = {}
 ) {
   console.log(`Generating reply for ${jid}...`);
-  const history = [...context];
+  let history = [...context];
+  // If last message in context is by model, append 'ok' from user
+  if (history.length > 0) {
+    const lastMsg = history[0];
+    console.log(lastMsg);
+
+    // Check for Gemini/LLM model message (role: 'model' or 'assistant')
+    if (lastMsg.role == "model") {
+      // Append a user "ok" message
+      history = [{ role: "user", parts: [{ text: "ok" }] }, ...history];
+      console.log(history);
+    }
+  }
 
   try {
     const model = genAI.getGenerativeModel({
@@ -82,18 +102,22 @@ async function generateReply(
     const result = await executeWithRetry(
       () => chat.sendMessage(messageContent),
       {
-        maxAttempts: 5,          // total attempts (tune as needed)
-        baseDelayMs: 200,        // initial backoff
-        maxDelayMs: 4000,        // max backoff
+        maxAttempts: 5, // total attempts (tune as needed)
+        baseDelayMs: 200, // initial backoff
+        maxDelayMs: 4000, // max backoff
         onRetry: ({ attempt, maxAttempts, err, wait }) => {
-          console.warn(`[AI retry] attempt ${attempt}/${maxAttempts} - will retry in ${wait}ms. error:`, err && (err.message || err));
+          console.warn(
+            `[AI retry] attempt ${attempt}/${maxAttempts} - will retry in ${wait}ms. error:`,
+            err && (err.message || err)
+          );
         },
       }
     );
     const response = result.response;
     const functionCalls = response.functionCalls();
     console.log("functionCalls", functionCalls);
-    if ( isTransientError(response.text()) ) return "Sorry, we are overloaded plz try again later."
+    if (isTransientError(response.text()))
+      return "Sorry, we are overloaded plz try again later.";
     if (functionCalls && functionCalls.length > 0) {
       console.log("Gemini requested a tool call:", functionCalls[0].name);
       const call = functionCalls[0];
@@ -139,7 +163,7 @@ class LLMService {
       }
     }
   }
-  
+
   /**
    * This service isolates all interactions with a Large Language Model.
    * By using structured JSON responses, it provides reliable, machine-readable
@@ -207,7 +231,12 @@ class LLMService {
     );
     return null; // Return null to indicate failure.
   }
-  async classifyDocumentText(jid, resumeText, messageHistory = [], maxRetries = 2) {
+  async classifyDocumentText(
+    jid,
+    resumeText,
+    messageHistory = [],
+    maxRetries = 2
+  ) {
     /**
      * - jid: chat id
      * - resumeText: extracted resume text (string)
@@ -262,12 +291,23 @@ class LLMService {
       attempts++;
       try {
         // pass messageHistory as context so generateReply can include it in the model call
-        const responseRaw = await generateReply(jid, resumeText, messageHistory, sysPrompt);
-        const responseText = typeof responseRaw === "string" ? responseRaw : JSON.stringify(responseRaw);
+        const responseRaw = await generateReply(
+          jid,
+          resumeText,
+          messageHistory,
+          sysPrompt
+        );
+        const responseText =
+          typeof responseRaw === "string"
+            ? responseRaw
+            : JSON.stringify(responseRaw);
 
         // cleaning
         let cleaned = String(responseText).trim();
-        cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").replace(/^`+|`+$/g, "");
+        cleaned = cleaned
+          .replace(/^```(?:json)?\s*/i, "")
+          .replace(/\s*```$/i, "")
+          .replace(/^`+|`+$/g, "");
 
         // try direct parse
         try {
@@ -281,13 +321,21 @@ class LLMService {
               const parsed2 = JSON.parse(firstJsonMatch[0]);
               return normalizeParsed(parsed2);
             } catch (parseErr2) {
-              console.warn(`[classifyDocumentText] fallback JSON parse failed: ${parseErr2.message}`);
+              console.warn(
+                `[classifyDocumentText] fallback JSON parse failed: ${parseErr2.message}`
+              );
             }
           }
-          console.warn(`[classifyDocumentText] attempt ${attempts} parse failed: ${parseErr.message}`);
+          console.warn(
+            `[classifyDocumentText] attempt ${attempts} parse failed: ${parseErr.message}`
+          );
         }
       } catch (err) {
-        console.warn(`[classifyDocumentText] attempt ${attempts} generateReply failed: ${err && err.message ? err.message : err}`);
+        console.warn(
+          `[classifyDocumentText] attempt ${attempts} generateReply failed: ${
+            err && err.message ? err.message : err
+          }`
+        );
       }
     }
 
@@ -296,24 +344,56 @@ class LLMService {
       const text = String(resumeText || "").trim();
       const lower = text.toLowerCase();
 
-      const email = (text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/i) || [null])[0] || null;
+      const email =
+        (text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/i) || [
+          null,
+        ])[0] || null;
       const phone = (text.match(/(\+?\d[\d\-\s]{6,}\d)/g) || [null])[0] || null;
       // name heuristics: "Name: X" or first capitalized two-word sequence near top
       const nameLabel = text.match(/name[:\-]\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/);
-      const nameMatch = nameLabel ? nameLabel[1] : (text.split("\n").slice(0, 5).join(" ").match(/[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}/) || [null])[0];
+      const nameMatch = nameLabel
+        ? nameLabel[1]
+        : (text
+            .split("\n")
+            .slice(0, 5)
+            .join(" ")
+            .match(/[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}/) || [null])[0];
 
       // detect resume-like sections
-      const hasExperience = /(^|\n)\s*(experience|work experience|professional experience)\s*[:\n]/i.test(text);
-      const hasEducation = /(^|\n)\s*(education|qualifications)\s*[:\n]/i.test(text);
-      const hasSkills = /(^|\n)\s*(skills|technical skills|core skills)\s*[:\n]/i.test(text);
-      const hasRoleTitles = /\b(engineer|developer|designer|manager|consultant|analyst|director|lead)\b/i.test(text);
+      const hasExperience =
+        /(^|\n)\s*(experience|work experience|professional experience)\s*[:\n]/i.test(
+          text
+        );
+      const hasEducation = /(^|\n)\s*(education|qualifications)\s*[:\n]/i.test(
+        text
+      );
+      const hasSkills =
+        /(^|\n)\s*(skills|technical skills|core skills)\s*[:\n]/i.test(text);
+      const hasRoleTitles =
+        /\b(engineer|developer|designer|manager|consultant|analyst|director|lead)\b/i.test(
+          text
+        );
 
       // top skills seed
-      const skillsSeed = ["react", "node", "python", "django", "aws", "docker", "figma", "ui/ux", "javascript", "typescript", "php", "wordpress"];
-      const foundSkills = skillsSeed.filter(s => lower.includes(s));
+      const skillsSeed = [
+        "react",
+        "node",
+        "python",
+        "django",
+        "aws",
+        "docker",
+        "figma",
+        "ui/ux",
+        "javascript",
+        "typescript",
+        "php",
+        "wordpress",
+      ];
+      const foundSkills = skillsSeed.filter((s) => lower.includes(s));
 
       // years experience heur
-      const years = (text.match(/(\d+)\s*(?:years|yrs|y)\b/i) || [null])[1] || null;
+      const years =
+        (text.match(/(\d+)\s*(?:years|yrs|y)\b/i) || [null])[1] || null;
 
       const reasons = [];
       if (email) reasons.push(`has_email`);
@@ -322,14 +402,26 @@ class LLMService {
       if (hasEducation) reasons.push(`has_education_section`);
       if (hasSkills) reasons.push(`has_skills_section`);
       if (hasRoleTitles) reasons.push(`has_role_titles`);
-      if (foundSkills.length) reasons.push(`found_skills:${foundSkills.join(",")}`);
+      if (foundSkills.length)
+        reasons.push(`found_skills:${foundSkills.join(",")}`);
       if (years) reasons.push(`mentioned_years:${years}`);
 
       // Basic decision logic: require at least two resume signals (email/phone/experience/education/skills/roleTitles)
-      const signalCount = (email ? 1 : 0) + (phone ? 1 : 0) + (hasExperience ? 1 : 0) + (hasEducation ? 1 : 0) + (hasSkills ? 1 : 0) + (hasRoleTitles ? 1 : 0);
+      const signalCount =
+        (email ? 1 : 0) +
+        (phone ? 1 : 0) +
+        (hasExperience ? 1 : 0) +
+        (hasEducation ? 1 : 0) +
+        (hasSkills ? 1 : 0) +
+        (hasRoleTitles ? 1 : 0);
       const isLikelyResume = signalCount >= 2 || foundSkills.length >= 3;
 
-      const confidence = Math.min(0.75, 0.15 * signalCount + (foundSkills.length ? 0.05 * foundSkills.length : 0) + (years ? 0.05 : 0));
+      const confidence = Math.min(
+        0.75,
+        0.15 * signalCount +
+          (foundSkills.length ? 0.05 * foundSkills.length : 0) +
+          (years ? 0.05 : 0)
+      );
 
       const key_fields = {
         email: email || null,
@@ -341,7 +433,9 @@ class LLMService {
 
       return {
         isResume: !!isLikelyResume,
-        confidence: isLikelyResume ? Number(confidence.toFixed(2)) : Number((Math.max(0, confidence * 0.5)).toFixed(2)),
+        confidence: isLikelyResume
+          ? Number(confidence.toFixed(2))
+          : Number(Math.max(0, confidence * 0.5).toFixed(2)),
         reasons,
         key_fields,
       };
@@ -360,13 +454,17 @@ class LLMService {
       const confidence =
         typeof parsed.confidence === "number"
           ? Math.max(0, Math.min(1, parsed.confidence))
-          : (typeof parsed.confidence === "string" && !isNaN(parseFloat(parsed.confidence)) ? Math.max(0, Math.min(1, parseFloat(parsed.confidence))) : 0);
+          : typeof parsed.confidence === "string" &&
+            !isNaN(parseFloat(parsed.confidence))
+          ? Math.max(0, Math.min(1, parseFloat(parsed.confidence)))
+          : 0;
       const reasons = Array.isArray(parsed.reasons)
         ? parsed.reasons
         : parsed.reasons
         ? [String(parsed.reasons)]
         : [];
-      const key_fields = parsed.key_fields || parsed.keyFields || parsed.key_fields || {};
+      const key_fields =
+        parsed.key_fields || parsed.keyFields || parsed.key_fields || {};
 
       // normalize top_skills to array if present
       if (key_fields.top_skills && !Array.isArray(key_fields.top_skills)) {
@@ -382,10 +480,14 @@ class LLMService {
     }
   }
 
-
   // Simplified, no-heavy-normalization version.
-// Assumes you already prepare/format messageHistory for generateReply (or pass an array of strings).
-  async classifyPortfolioMatchFromHistory(jid, messageHistory = [], lastMessage = "", maxRetries = 2) {
+  // Assumes you already prepare/format messageHistory for generateReply (or pass an array of strings).
+  async classifyPortfolioMatchFromHistory(
+    jid,
+    messageHistory = [],
+    lastMessage = "",
+    maxRetries = 2
+  ) {
     /**
      * Lightweight version (minimal normalization).
      * - messageHistory: array (preferably already formatted for your generateReply context)
@@ -453,12 +555,24 @@ class LLMService {
       attempts++;
       try {
         // Pass messageHistory as context so your generateReply can include full history in the model call.
-        const responseRaw = await generateReply(jid, lastMessage, messageHistory, sysPrompt,[{ urlContext: {} },{ googleSearch: {} }]);
-        const responseText = typeof responseRaw === "string" ? responseRaw : JSON.stringify(responseRaw);
+        const responseRaw = await generateReply(
+          jid,
+          lastMessage,
+          messageHistory,
+          sysPrompt,
+          [{ urlContext: {} }, { googleSearch: {} }]
+        );
+        const responseText =
+          typeof responseRaw === "string"
+            ? responseRaw
+            : JSON.stringify(responseRaw);
 
         // minimal cleaning
         let cleaned = String(responseText).trim();
-        cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").replace(/^`+|`+$/g, "");
+        cleaned = cleaned
+          .replace(/^```(?:json)?\s*/i, "")
+          .replace(/\s*```$/i, "")
+          .replace(/^`+|`+$/g, "");
 
         // try direct parse
         try {
@@ -472,26 +586,57 @@ class LLMService {
               const parsed2 = JSON.parse(m[0]);
               return _normalize(parsed2);
             } catch (e2) {
-              console.warn(`[classifyPortfolioMatchFromHistory] parse attempt ${attempts} failed:`, e2.message);
+              console.warn(
+                `[classifyPortfolioMatchFromHistory] parse attempt ${attempts} failed:`,
+                e2.message
+              );
             }
           }
-          console.warn(`[classifyPortfolioMatchFromHistory] parse attempt ${attempts} failed:`, err.message);
+          console.warn(
+            `[classifyPortfolioMatchFromHistory] parse attempt ${attempts} failed:`,
+            err.message
+          );
         }
       } catch (err) {
-        console.warn(`[classifyPortfolioMatchFromHistory] generateReply attempt ${attempts} error:`, err && err.message ? err.message : err);
+        console.warn(
+          `[classifyPortfolioMatchFromHistory] generateReply attempt ${attempts} error:`,
+          err && err.message ? err.message : err
+        );
       }
     }
 
     // LLM failed -> small heuristic fallback using combined text
     try {
-      const combined = (shortHistoryText + "\n\n" + String(lastMessage)).toLowerCase();
+      const combined = (
+        shortHistoryText +
+        "\n\n" +
+        String(lastMessage)
+      ).toLowerCase();
 
-      const email = (combined.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/i) || [null])[0];
+      const email = (combined.match(
+        /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/i
+      ) || [null])[0];
       const phone = (combined.match(/(\+?\d[\d\-\s]{6,}\d)/g) || [null])[0];
-      const years = (combined.match(/(\d+)\s*(?:years|yrs|y)\b/i) || [null])[1] || null;
+      const years =
+        (combined.match(/(\d+)\s*(?:years|yrs|y)\b/i) || [null])[1] || null;
 
-      const skillsSeed = ["react", "node", "figma", "ui/ux", "design", "python", "django", "aws", "docker", "wordpress", "php", "nextjs", "javascript", "typescript"];
-      const skills = skillsSeed.filter(s => combined.includes(s));
+      const skillsSeed = [
+        "react",
+        "node",
+        "figma",
+        "ui/ux",
+        "design",
+        "python",
+        "django",
+        "aws",
+        "docker",
+        "wordpress",
+        "php",
+        "nextjs",
+        "javascript",
+        "typescript",
+      ];
+      const skills = skillsSeed.filter((s) => combined.includes(s));
 
       const reasons = [];
       if (email) reasons.push(`email_detected:${email}`);
@@ -517,34 +662,65 @@ class LLMService {
           total_projects_completed: null,
           preferred_clients: "Unknown",
           portfolio_urls: [], // you said you handle URLs elsewhere
-          notes: "heuristic fallback; LLM did not return valid JSON"
-        }
+          notes: "heuristic fallback; LLM did not return valid JSON",
+        },
       };
     } catch (fallbackErr) {
       return {
         isPortfolioOfUser: false,
         confidence: 0,
         match_reasons: ["fallback_failed"],
-        combined_profile: {}
+        combined_profile: {},
       };
     }
 
     // small normalizer for returned parsed JSON
     function _normalize(parsed) {
       const out = {
-        isPortfolioOfUser: !!(parsed.isPortfolioOfUser || parsed.is_portfolio_of_user || parsed.isPortfolio || parsed.is_portfolio),
-        confidence: typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : (parsed.confidence ? parseFloat(parsed.confidence) || 0 : 0),
-        match_reasons: Array.isArray(parsed.match_reasons) ? parsed.match_reasons : (parsed.match_reasons ? [String(parsed.match_reasons)] : []),
-        combined_profile: parsed.combined_profile || parsed.profile || {}
+        isPortfolioOfUser: !!(
+          parsed.isPortfolioOfUser ||
+          parsed.is_portfolio_of_user ||
+          parsed.isPortfolio ||
+          parsed.is_portfolio
+        ),
+        confidence:
+          typeof parsed.confidence === "number"
+            ? Math.max(0, Math.min(1, parsed.confidence))
+            : parsed.confidence
+            ? parseFloat(parsed.confidence) || 0
+            : 0,
+        match_reasons: Array.isArray(parsed.match_reasons)
+          ? parsed.match_reasons
+          : parsed.match_reasons
+          ? [String(parsed.match_reasons)]
+          : [],
+        combined_profile: parsed.combined_profile || parsed.profile || {},
       };
       // ensure arrays exist
-      out.combined_profile.top_skills = Array.isArray(out.combined_profile.top_skills) ? out.combined_profile.top_skills : (out.combined_profile.top_skills ? String(out.combined_profile.top_skills).split(/\s*,\s*/) : []);
-      out.combined_profile.portfolio_urls = Array.isArray(out.combined_profile.portfolio_urls) ? out.combined_profile.portfolio_urls : (out.combined_profile.portfolio_urls ? [out.combined_profile.portfolio_urls] : []);
+      out.combined_profile.top_skills = Array.isArray(
+        out.combined_profile.top_skills
+      )
+        ? out.combined_profile.top_skills
+        : out.combined_profile.top_skills
+        ? String(out.combined_profile.top_skills).split(/\s*,\s*/)
+        : [];
+      out.combined_profile.portfolio_urls = Array.isArray(
+        out.combined_profile.portfolio_urls
+      )
+        ? out.combined_profile.portfolio_urls
+        : out.combined_profile.portfolio_urls
+        ? [out.combined_profile.portfolio_urls]
+        : [];
       return out;
     }
   }
 
-  async classifyLinkedinMatchFromHistory(jid, messageHistory = [], lastMessage = "", maxRetries = 2) {
+  async classifyLinkedinMatchFromHistory(
+    jid,
+    messageHistory = [],
+    lastMessage = "",
+    maxRetries = 2
+  ) {
     /**
      * Detects whether the LinkedIn profile (URL) shared in lastMessage belongs to
      * the same user described in messageHistory.
@@ -634,12 +810,24 @@ class LLMService {
       try {
         // Pass messageHistory as context so your generateReply can include full history in the model call.
         // adapt the extra context args to your generateReply signature if needed
-        const responseRaw = await generateReply(jid, lastMessage, messageHistory, sysPrompt, [{ urlContext: {} }, { googleSearch: {} }]);
-        const responseText = typeof responseRaw === "string" ? responseRaw : JSON.stringify(responseRaw);
+        const responseRaw = await generateReply(
+          jid,
+          lastMessage,
+          messageHistory,
+          sysPrompt,
+          [{ urlContext: {} }, { googleSearch: {} }]
+        );
+        const responseText =
+          typeof responseRaw === "string"
+            ? responseRaw
+            : JSON.stringify(responseRaw);
 
         // minimal cleaning
         let cleaned = String(responseText).trim();
-        cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").replace(/^`+|`+$/g, "");
+        cleaned = cleaned
+          .replace(/^```(?:json)?\s*/i, "")
+          .replace(/\s*```$/i, "")
+          .replace(/^`+|`+$/g, "");
 
         // try direct parse
         try {
@@ -653,61 +841,114 @@ class LLMService {
               const parsed2 = JSON.parse(m[0]);
               return _normalize(parsed2);
             } catch (e2) {
-              console.warn(`[classifyLinkedinMatchFromHistory] parse attempt ${attempts} failed:`, e2.message);
+              console.warn(
+                `[classifyLinkedinMatchFromHistory] parse attempt ${attempts} failed:`,
+                e2.message
+              );
             }
           }
-          console.warn(`[classifyLinkedinMatchFromHistory] parse attempt ${attempts} failed:`, err.message);
+          console.warn(
+            `[classifyLinkedinMatchFromHistory] parse attempt ${attempts} failed:`,
+            err.message
+          );
         }
       } catch (err) {
-        console.warn(`[classifyLinkedinMatchFromHistory] generateReply attempt ${attempts} error:`, err && err.message ? err.message : err);
+        console.warn(
+          `[classifyLinkedinMatchFromHistory] generateReply attempt ${attempts} error:`,
+          err && err.message ? err.message : err
+        );
       }
     }
-    const shortHistoryText = Array.isArray(messageHistory) ? messageHistory.slice(-20).join("\n") : String(messageHistory || "");
-    
+    const shortHistoryText = Array.isArray(messageHistory)
+      ? messageHistory.slice(-20).join("\n")
+      : String(messageHistory || "");
+
     // LLM failed -> small heuristic fallback using combined text
     try {
-      const combined = (shortHistoryText + "\n\n" + String(lastMessage)).toLowerCase();
+      const combined = (
+        shortHistoryText +
+        "\n\n" +
+        String(lastMessage)
+      ).toLowerCase();
 
       // LinkedIn URL detection
-      const linkedinUrlMatch = String(lastMessage).match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9\-_%\.]+/i);
-      const linkedinUrl = linkedinUrlMatch ? linkedinUrlMatch[0] : (combined.match(/linkedin\.com\/in\/[a-zA-Z0-9\-_%\.]+/i) ? "https://www." + combined.match(/linkedin\.com\/in\/[a-zA-Z0-9\-_%\.]+/i)[0] : null);
+      const linkedinUrlMatch = String(lastMessage).match(
+        /https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9\-_%\.]+/i
+      );
+      const linkedinUrl = linkedinUrlMatch
+        ? linkedinUrlMatch[0]
+        : combined.match(/linkedin\.com\/in\/[a-zA-Z0-9\-_%\.]+/i)
+        ? "https://www." +
+          combined.match(/linkedin\.com\/in\/[a-zA-Z0-9\-_%\.]+/i)[0]
+        : null;
       let linkedinHandle = null;
       if (linkedinUrl) {
-        const mHandle = linkedinUrl.match(/linkedin\.com\/in\/([a-zA-Z0-9\-_%\.]+)/i);
+        const mHandle = linkedinUrl.match(
+          /linkedin\.com\/in\/([a-zA-Z0-9\-_%\.]+)/i
+        );
         if (mHandle) linkedinHandle = mHandle[1];
       }
 
       // Extract simple signals
-      const email = (combined.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/i) || [null])[0];
+      const email = (combined.match(
+        /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/i
+      ) || [null])[0];
       const phone = (combined.match(/(\+?\d[\d\-\s]{6,}\d)/g) || [null])[0];
 
       // Try to extract name tokens from history if someone said "I am X" or "I'm X"
       let name = null;
-      const nameMatch = shortHistoryText.match(/\bI(?:'| a)?m\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/m);
+      const nameMatch = shortHistoryText.match(
+        /\bI(?:'| a)?m\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/m
+      );
       if (nameMatch) name = nameMatch[1];
 
       // If linkedin handle contains likely name parts, derive possible name
       if (!name && linkedinHandle) {
-        const guess = linkedinHandle.replace(/[-._]/g, ' ').split(' ').map(s => s.trim()).filter(Boolean);
+        const guess = linkedinHandle
+          .replace(/[-._]/g, " ")
+          .split(" ")
+          .map((s) => s.trim())
+          .filter(Boolean);
         if (guess.length >= 1 && guess[0].length > 1) {
-          name = guess.map(p => p[0].toUpperCase() + p.slice(1)).join(' ');
+          name = guess.map((p) => p[0].toUpperCase() + p.slice(1)).join(" ");
         }
       }
 
       // years experience
-      const years = (combined.match(/(\d+)\s*(?:years|yrs|y)\b/i) || [null, null])[1] || null;
+      const years =
+        (combined.match(/(\d+)\s*(?:years|yrs|y)\b/i) || [null, null])[1] ||
+        null;
 
       // skills seed
-      const skillsSeed = ["react", "node", "figma", "ui/ux", "design", "python", "django", "aws", "docker", "wordpress", "php", "nextjs", "javascript", "typescript"];
-      const skills = skillsSeed.filter(s => combined.includes(s));
+      const skillsSeed = [
+        "react",
+        "node",
+        "figma",
+        "ui/ux",
+        "design",
+        "python",
+        "django",
+        "aws",
+        "docker",
+        "wordpress",
+        "php",
+        "nextjs",
+        "javascript",
+        "typescript",
+      ];
+      const skills = skillsSeed.filter((s) => combined.includes(s));
 
       // company / designation quick heuristics
       let current_company = null;
       let designation = null;
-      const compMatch = combined.match(/works? at ([A-Z][a-zA-Z0-9&\-\s]{2,50})/i) || combined.match(/currently at ([A-Z][a-zA-Z0-9&\-\s]{2,50})/i);
+      const compMatch =
+        combined.match(/works? at ([A-Z][a-zA-Z0-9&\-\s]{2,50})/i) ||
+        combined.match(/currently at ([A-Z][a-zA-Z0-9&\-\s]{2,50})/i);
       if (compMatch) current_company = compMatch[1].trim();
 
-      const desigMatch = combined.match(/(senior|lead|manager|director|engineer|developer|designer|consultant)[\w\s\-]{0,30}/i);
+      const desigMatch = combined.match(
+        /(senior|lead|manager|director|engineer|developer|designer|consultant)[\w\s\-]{0,30}/i
+      );
       if (desigMatch) designation = (desigMatch[0] || "").trim();
 
       // build reasons
@@ -721,12 +962,16 @@ class LLMService {
       if (current_company) reasons.push(`company:${current_company}`);
 
       // basic match decision: require >=1 strong signal (email/name/company) OR multiple skill/years signals
-      const strongSignals = (email ? 1 : 0) + (name ? 1 : 0) + (current_company ? 1 : 0);
-      const isLikely = linkedinUrl && (strongSignals >= 1 || reasons.length >= 2);
+      const strongSignals =
+        (email ? 1 : 0) + (name ? 1 : 0) + (current_company ? 1 : 0);
+      const isLikely =
+        linkedinUrl && (strongSignals >= 1 || reasons.length >= 2);
 
       return {
         isLinkedinUserSame: !!isLikely,
-        confidence: isLikely ? Math.min(0.85, 0.3 + 0.15 * reasons.length) : Math.min(0.5, 0.1 * reasons.length),
+        confidence: isLikely
+          ? Math.min(0.85, 0.3 + 0.15 * reasons.length)
+          : Math.min(0.5, 0.1 * reasons.length),
         match_reasons: reasons,
         combined_profile: {
           name: name || null,
@@ -741,29 +986,49 @@ class LLMService {
           designation: designation || null,
           total_projects_completed: null,
           preferred_clients: "Unknown",
-          notes: "heuristic fallback; LLM did not return valid JSON"
-        }
+          notes: "heuristic fallback; LLM did not return valid JSON",
+        },
       };
     } catch (fallbackErr) {
       return {
         isLinkedinUserSame: false,
         confidence: 0,
         match_reasons: ["fallback_failed"],
-        combined_profile: {}
+        combined_profile: {},
       };
     }
 
     // normalizer for returned parsed JSON
     function _normalize(parsed) {
       const out = {
-        isLinkedinUserSame: !!(parsed.isLinkedinUserSame || parsed.is_linkedin_user_same || parsed.isLinkedin || parsed.is_linkedin),
-        confidence: typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : (parsed.confidence ? parseFloat(parsed.confidence) || 0 : 0),
-        match_reasons: Array.isArray(parsed.match_reasons) ? parsed.match_reasons : (parsed.match_reasons ? [String(parsed.match_reasons)] : []),
-        combined_profile: parsed.combined_profile || parsed.profile || {}
+        isLinkedinUserSame: !!(
+          parsed.isLinkedinUserSame ||
+          parsed.is_linkedin_user_same ||
+          parsed.isLinkedin ||
+          parsed.is_linkedin
+        ),
+        confidence:
+          typeof parsed.confidence === "number"
+            ? Math.max(0, Math.min(1, parsed.confidence))
+            : parsed.confidence
+            ? parseFloat(parsed.confidence) || 0
+            : 0,
+        match_reasons: Array.isArray(parsed.match_reasons)
+          ? parsed.match_reasons
+          : parsed.match_reasons
+          ? [String(parsed.match_reasons)]
+          : [],
+        combined_profile: parsed.combined_profile || parsed.profile || {},
       };
 
       // ensure arrays exist
-      out.combined_profile.top_skills = Array.isArray(out.combined_profile.top_skills) ? out.combined_profile.top_skills : (out.combined_profile.top_skills ? String(out.combined_profile.top_skills).split(/\s*,\s*/) : []);
+      out.combined_profile.top_skills = Array.isArray(
+        out.combined_profile.top_skills
+      )
+        ? out.combined_profile.top_skills
+        : out.combined_profile.top_skills
+        ? String(out.combined_profile.top_skills).split(/\s*,\s*/)
+        : [];
       return out;
     }
   }
@@ -772,11 +1037,11 @@ class LLMService {
     console.log("Starting the candidate finding and analysis process...");
 
     // --- Step 1: Generate the NLP query from the conversation ---
-    const nlpGenerationPrompt = `Based on the following conversation history, create a concise, one-sentence summary of the ideal candidate being sought. This summary will be used as a search query. For example: "a senior javascript developer with react and node.js experience located in san francisco". Do not add any other explanatory text.`;
+    const nlpGenerationPrompt = `Based on the following conversation history, create a detailed summary ideal for searching candidate looking for job or a freelancer in vector DB. This summary will be used as a search query. For example: "a senior javascript developer with react and node.js experience located in san francisco of range 12-14lpa available for onsite work ".`;
 
     const nlpQuery = await generateReply(
       {}, // jid
-      "Generate a search query from this conversation.",
+      "Generate a search query from this conversation. Mention All possible info so that it can also be used as reference for asking relevant questions to candidates or freelancers on a reachOut.",
       messageHistory,
       nlpGenerationPrompt
     );
@@ -792,23 +1057,23 @@ class LLMService {
     // --- Step 2: Get the list of candidates using the NLP query ---
     // This is where you call your actual candidate retrieval function.
     console.log("Performing hybrid search for candidates...");
-    const initialCandidates = await callHybridSearch(nlpQuery);
+    // const initialCandidates = await callHybridSearch(nlpQuery);
 
-    if (!initialCandidates || initialCandidates.length === 0) {
-      console.log("Hybrid search returned no candidates.");
-      return []; // Return an empty array as no candidates were found
-    }
-    console.log(`Found ${initialCandidates.length} potential candidates.`);
+    // if (!initialCandidates || initialCandidates.length === 0) {
+    //   console.log("Hybrid search returned no candidates.");
+    //   return []; // Return an empty array as no candidates were found
+    // }
+    // console.log(`Found ${initialCandidates.length} potential candidates.`);
 
     // --- Step 3: Analyze the candidates and return the final list ---
     console.log("Analyzing and formatting the candidate list...");
-    const finalList = await this.generateCandidateList(
-      nlpQuery,
-      initialCandidates,
-      messageHistory
-    );
+    // const finalList = await this.generateCandidateList(
+    //   nlpQuery,
+    //   initialCandidates,
+    //   messageHistory
+    // );
 
-    return finalList;
+    return nlpQuery;
   }
 
   async determineUserType(messageHistory) {
@@ -837,7 +1102,9 @@ class LLMService {
   }
 
   async genrateQuerySummary(reachouts, messageHistory, ptype) {
-    const sysPrompt = await getSysPrompt(ptype=="hr"?"hr_summary": "client_summary");
+    const sysPrompt = await getSysPrompt(
+      ptype == "hr" ? "hr_summary" : "client_summary"
+    );
     const response = await generateReply(
       "genrating the query summary",
       `${reachouts} Summarize the above in the required format accoording to the system prompt only.`,
@@ -847,9 +1114,14 @@ class LLMService {
     return response;
   }
 
-  async genrateTheReachOutInfo(user, query,type, ptype){
-    const sysPrompt = await getSysPrompt(ptype=="hr"?"roc_info": "rof_info");
-    const prompt = type == "ask" ? `genarate reply according to system prompt for following user name:${user.name} and info: ${user.metadata} based on conversation and base on query: ${query.query} and author type: ${query.author_type} based on conversation` : `genarate reply according to system prompt for following user name:${user.name} and info: ${user.metadata}, base on query: ${query.query} and author type: ${query.author_type} based on conversation`
+  async genrateTheReachOutInfo(user, query, type, ptype) {
+    const sysPrompt = await getSysPrompt(
+      ptype == "hr" ? "roc_info" : "rof_info"
+    );
+    const prompt =
+      type == "ask"
+        ? `genarate reply according to system prompt for following user name:${user.name} and info: ${user.metadata} based on conversation and base on query: ${query.query} and author type: ${query.author_type} based on conversation`
+        : `genarate reply according to system prompt for following user name:${user.name} and info: ${user.metadata}, base on query: ${query.query} and author type: ${query.author_type} based on conversation`;
     const response = await generateReply(
       "genrating the reachout info",
       prompt,
@@ -857,7 +1129,6 @@ class LLMService {
       sysPrompt
     );
     return response;
-
   }
 
   async generateGeneralReply(user, prompt, messageHistory) {
@@ -884,57 +1155,6 @@ class LLMService {
       toolFunctions
     );
     return response;
-  }
-}
-
-
-async function generateReply(
-  jid,
-  messageContent,
-  context,
-  sysPrompt,
-  tools = {},
-  toolFunctions = {}
-) {
-  console.log(`Generating reply for ${jid}...`);
-  const history = [...context];
-
-  try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-pro",
-      systemInstruction: sysPrompt,
-      tools,
-    });
-
-    const chat = model.startChat({ history });
-    const result = await chat.sendMessage(messageContent);
-    const response = result.response;
-    const functionCalls = response.functionCalls();
-    console.log("functionCalls", functionCalls);
-
-    if (functionCalls && functionCalls.length > 0) {
-      console.log("Gemini requested a tool call:", functionCalls[0].name);
-      const call = functionCalls[0];
-      console.log("Calls", call);
-
-      if (toolFunctions[call.name]) {
-        // The arguments from the AI are in call.args
-        console.log(call.args);
-        call.args.jid = jid; // Always pass the jid to the tool
-        const apiResponse = await toolFunctions[call.name](call.args);
-        // const result2 = await chat.sendMessage([
-        //   { functionResponse: { name: call.name, response: apiResponse } },
-        // ]);
-        // return result2.response.text();
-      } else {
-        return "Sorry, I tried to use a tool that I don't recognize.";
-      }
-    }
-    console.log(`Generated reply for ${jid}: ${response.text()}`);
-    return response.text();
-  } catch (error) {
-    console.error("Error during Gemini AI call:", error);
-    return `Sorry, I had a little trouble thinking. Could you please try again? \n ${error}`;
   }
 }
 
@@ -966,6 +1186,5 @@ const callHybridSearch = async (query) => {
     return { error: `API call failed: ${error.message}` };
   }
 };
-
 
 module.exports = LLMService;

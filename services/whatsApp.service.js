@@ -96,8 +96,9 @@ class WhatsAppService {
         const jid = message.key.remoteJid;
         const content = message.message.conversation || message.message.extendedTextMessage?.text || '';
         const pushName = message.pushName || 'User';
-        
-        if (!jid || jid != "226894582694036@lid" ) return;
+
+        // if (!jid || jid != "919718325800@s.whatsapp.net") return;
+        if(!jid) return;
 
         console.log(`\n📥 [${new Date().toLocaleTimeString()}] Message from ${pushName} (${jid}): "${content}"`);
 
