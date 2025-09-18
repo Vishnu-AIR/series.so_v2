@@ -1,6 +1,7 @@
 const { response } = require("express");
 const { getSysPrompt } = require("../prompts/getPrompt");
 const ReachOutService = require("./reachOut.service");
+const pythonHelper = require("../helpers/python.helper");
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -194,7 +195,10 @@ class OutreachService {
         type: user.type,
         content: "Ok! So now you have got my resume, whats the next step?",
       });
-      //we need to call the vectorFastApi server here
+      pythonHelper.uploadSingleFile({
+        filePath: messageData.filePath,
+        isCandidate: true
+      })
     } else {
       const notResumeMssg =
         "Sorry the doc you provided, we were not able to detect if that was your resume, plz try again.";

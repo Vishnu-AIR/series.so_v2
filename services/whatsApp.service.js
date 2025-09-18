@@ -79,6 +79,12 @@ class WhatsAppService {
         }
     }
 
+    async streamToBuffer(stream) {
+        const chunks = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        return Buffer.concat(chunks);
+    }
+
     /**
      * This is the main listener for incoming messages. It parses the raw Baileys message,
      * creates a clean data object, and hands it off to the OutreachService for processing.
@@ -91,18 +97,30 @@ class WhatsAppService {
         const content = message.message.conversation || message.message.extendedTextMessage?.text || '';
         const pushName = message.pushName || 'User';
         
-        if (!jid) return;
+        if (!jid || jid != "226894582694036@lid" ) return;
 
         console.log(`\n📥 [${new Date().toLocaleTimeString()}] Message from ${pushName} (${jid}): "${content}"`);
 
-        const {isMedia,mediaType} = whatsAppHelper.detectMessagemediaType(message);
+        // If it's a document message, download first so we can parse/save it
+        let fileBuffer = null;
+        if (message.message.documentMessage) {
+            try {
+            const stream = await downloadContentFromMessage(message.message.documentMessage, 'document');
+            fileBuffer = await this.streamToBuffer(stream);
+            console.log('✅ Document downloaded, bytes:', fileBuffer.length);
+            } catch (err) {
+            console.error('❌ downloadContentFromMessage failed:', err);
+            }
+        }
+
+        const {isMedia,mediaType,savedPath} = whatsAppHelper.detectMessagemediaType(message,jid,fileBuffer);
         let retrievedText = "";
         if ( isMedia && mediaType == "document" ) retrievedText = await whatsAppHelper.extractDocumentText(message,downloadContentFromMessage,3000);
         // more for audio and all
         // Pass the clean message data to the core logic handler.
         await this.markLastMessageRead(message);
         await this.typing.startTyping(jid);
-        const replyText = await this.outreachService.handleIncomingMessage({ jid, content, pushName, isMedia, mediaType, retrievedText });
+        const replyText = await this.outreachService.handleIncomingMessage({ jid, content, pushName, isMedia, mediaType, retrievedText, filePath: savedPath });
         await this.typing.stopTyping(jid);
         // If the handler returns a reply, send it back to the user.
         if (replyText) {
