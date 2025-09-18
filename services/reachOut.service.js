@@ -52,6 +52,16 @@ class ReachOutService {
   }
 
   /**
+   * Finds all ReachOuts for a specific queryId and status.
+   * @param {string} queryId - The MongoDB ObjectId of the query.
+   * @param {string} status - The status to filter by (e.g., 'init', 'qualify', 'hold', 'fail').
+   * @returns {Promise<Array<Object>>} A list of matching reachOuts.
+   */
+  async findReachOutsByQueryIdAndStatus(queryId, status) {
+    return ReachOut.find({ queryId: queryId, status: status }).populate("queryId").lean();
+  }
+
+  /**
    * Set ReachOut End.
    * @param {string} reachOutId - The MongoDB ObjectId of the reachOut.
    * @returns {Promise<Object>} The updated reachOut document.

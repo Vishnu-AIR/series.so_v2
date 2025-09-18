@@ -46,11 +46,25 @@ class QueryService {
   }
 
   async updateQueryStatus(queryId, newStatus) {
-    return Query.findByIdAndUpdate(
+    return await Query.findByIdAndUpdate(
       queryId,
       { status: newStatus },
       { new: true }
     );
+  }
+
+  async updateQueryCount(queryId) {
+    // Atomically increment the count field by 1
+    let updatedQuery = await Query.findByIdAndUpdate(
+      queryId,
+      { $inc: { count: 1 } },
+      { new: true }
+    );
+
+    if (updatedQuery.count > updatedQuery.totalCount / 2) {
+      updatedQuery = await this.updateQueryStatus(queryId, "hold");
+    }
+    return updatedQuery;
   }
 
   async getSuccessfulQuery(queryId) {
@@ -58,15 +72,28 @@ class QueryService {
     return queries;
   }
 
-  async isQuerySuccessful(queryId) {
-    const reachOuts = await ReachOut.find({ queryId });
-    const qualifyCount = reachOuts.filter((ro) => ro.status === "qualify").length;
-    if (qualifyCount > reachOuts.length / 2) {
-      await this.updateQueryStatus(queryId, "success");
-      return true;
-    }
-    return false;
+  async getHeldQeryByAuthorId(authorId){
+    const queries = await Query.find({ author_id: authorId, status: "hold" });
+    return queries;
+    
   }
+
+  async isQuerySuccessful(queryId) {
+    const updatedQuery = await this.updateQueryCount(queryId);
+    if (updatedQuery.status == "hold") {
+      return true;
+    } else return false;
+  }
+  //   const reachOuts = await ReachOut.find({ queryId });
+  //   const qualifyCount = reachOuts.filter(
+  //     (ro) => ro.status === "qualify"
+  //   ).length;
+  //   if (qualifyCount > reachOuts.length / 2) {
+  //     await this.updateQueryStatus(queryId, "success");
+  //     return true;
+  //   }
+  //   return false;
+  // }
 }
 
 module.exports = QueryService;

@@ -1,3 +1,4 @@
+const { response } = require("express");
 const { getSysPrompt } = require("../prompts/getPrompt");
 const ReachOutService = require("./reachOut.service");
 
@@ -47,10 +48,11 @@ class OutreachService {
       mediaType: messageData.mediaType || "null",
       mediaUrl: messageData.mediaUrl || null, //need to be done from s3/aws
     });
-    if(messageData.isMedia && messageData.mediaType == "document"){
+    if (messageData.isMedia && messageData.mediaType == "document") {
       //wait a min i am checking the document - send this mssg
-      const waitMssg = "Wait a min... I am checking the data in the doc you sent";
-      this.whatsAppService.sendMessage(messageData.jid , waitMssg);
+      const waitMssg =
+        "Wait a min... I am checking the data in the doc you sent";
+      this.whatsAppService.sendMessage(messageData.jid, waitMssg);
       await this.userService.saveMessage({
         jid: user.jid,
         by: "model",
@@ -59,10 +61,14 @@ class OutreachService {
       });
 
       //check for the data inside
-      const resumeJson = await this.llmService.classifyDocumentText(messageData.jid,messageData.retrievedText);
-      if ( resumeJson.isResume ){
-        const gotResumeMssg = "Yes, we have recieved your resume, thnx for sharing that";
-        this.whatsAppService.sendMessage(messageData.jid , gotResumeMssg);
+      const resumeJson = await this.llmService.classifyDocumentText(
+        messageData.jid,
+        messageData.retrievedText
+      );
+      if (resumeJson.isResume) {
+        const gotResumeMssg =
+          "Yes, we have recieved your resume, thnx for sharing that";
+        this.whatsAppService.sendMessage(messageData.jid, gotResumeMssg);
         await this.userService.saveMessage({
           jid: user.jid,
           by: "model",
@@ -75,11 +81,11 @@ class OutreachService {
           type: user.type,
           content: "Ok! So now you have got my resume, whats the next step?",
         });
-        //we need to call the vectorFastApi server here 
-      }
-      else{
-        const notResumeMssg = "Sorry the doc you provided, we were not able to detect if that was your resume, plz try again.";
-        this.whatsAppService.sendMessage(messageData.jid , notResumeMssg);
+        //we need to call the vectorFastApi server here
+      } else {
+        const notResumeMssg =
+          "Sorry the doc you provided, we were not able to detect if that was your resume, plz try again.";
+        this.whatsAppService.sendMessage(messageData.jid, notResumeMssg);
         this.userService.saveMessage({
           jid: user.jid,
           by: "model",
@@ -89,7 +95,7 @@ class OutreachService {
         return;
       }
     }
-    
+
     // Fetch the user's message history
     const messageHistory = await this.userService.getMessageHistory(user.jid);
     // Now route based on user type
@@ -285,7 +291,42 @@ Performing hybrid search for candidates..`,
 
   //-------------------------Supporting functions----------------------------
 
-  // Check for pending reachOuts and engage the user
+  /**
+   * Checks for and processes held queries for a given user.
+   * @param {*} user
+   * @param {*} messageHistory
+   * @returns {boolean} True if a query was processed, false otherwise.
+   */
+  async checkQuery(user) {
+    const queries = await this.queryService.getHeldQueryByAuthorId(user.jid);
+    if (!queries || queries.length < 1) return false;
+    for (const query of queries) {
+      const reachouts = this.reachOutService.findReachOutsByQueryIdAndStatus(
+        query._id,
+        "qualify"
+      );
+      const response = await this.llmService.genrateQuerySummary(reachouts, [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `Arrange the candidates form following reachouts according to this query: ${query.query}`,
+            },
+          ],
+        },
+      ]);
+      await this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: user.type,
+        content: response,
+      });
+      await this.whatsAppService.sendMessage(user.jid, response);
+      //if any reachOuts found send the update to user
+    }
+    return true;
+  }
+
   /**
    * Checks for and processes pending reach-outs for a given user.
    * @param {string} jid The user's JID.
@@ -295,9 +336,6 @@ Performing hybrid search for candidates..`,
     console.log(`[checkReachOut] Starting process for jid: ${jid}`);
     try {
       const messageHistory = await this.userService.getMessageHistory(jid);
-      //
-      //TODO: check if any successfull query results left
-      //
       const reachOuts = await this.reachOutService.findHeldReachOutsForUser(
         jid
       );
@@ -308,6 +346,9 @@ Performing hybrid search for candidates..`,
       );
 
       let user = await this.userService.findOrCreateUser(jid);
+
+      //check if any successfull query results left
+      this.checkQuery(user);
 
       if (reachOuts && reachOuts.length > 0) {
         console.log(
@@ -465,7 +506,12 @@ Performing hybrid search for candidates..`,
     }
   }
 
-  // Function to create reachOuts based on candidates from LLM analysis
+  /**
+   * Function to create reachOuts based on candidates from LLM analysis
+   * @param {*} authorId 
+   * @param {string} NLP 
+   * @param {Array<{name: string, phone: string, metadata: object}>} candidates 
+   */
   async makeReachOut(authorId, NLP, candidates) {
     console.log(
       `[makeReachOut] Initiating reachOut creation for authorId: ${authorId}`
@@ -505,11 +551,14 @@ Performing hybrid search for candidates..`,
       }
       // here anaylze based on user profile that wether need to ask user or notify him
       let type = "notify";
+      let userInfo;
       if (
         query.author_type == "client" ||
         (query.author_type == "hr" && user.type == "new")
       ) {
         type = "ask";
+      }else{
+        userInfo = await this.llmService.genrateTheReachOutInfo(user, query, type);
       }
       console.log(
         `[makeReachOut] Determined reachOut type: ${type} for user ID: ${user._id}`
@@ -520,6 +569,7 @@ Performing hybrid search for candidates..`,
         queryId: query._id,
         status: "hold",
         type: type,
+        userInfo: userInfo || "",
       });
       console.log(
         `[makeReachOut] Created reachOut for user JID: ${user.jid}, query ID: ${query._id}, type: ${type}`

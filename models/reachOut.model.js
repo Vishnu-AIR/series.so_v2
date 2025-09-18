@@ -47,6 +47,15 @@ const reachOutSchema = new Schema(
     },
 
     /**
+     * Additional metadata related to the reach-out.
+     * Can store any extra information as a flexible object.
+     */
+    userInfo: {
+      type: String,
+      default: "",
+    },
+
+    /**
      * Indicates if the reach-out process has ended.
      */
     end: {

@@ -286,7 +286,6 @@ class LLMService {
       };
     }
   }
-
   
   async findAndAnalyzeCandidates(messageHistory) {
     console.log("Starting the candidate finding and analysis process...");
@@ -340,7 +339,7 @@ class LLMService {
     return response;
   }
 
-  async qualifyUserForReachOut(userType,reachOut, messageHistory) {
+  async qualifyUserForReachOut(userType, reachOut, messageHistory) {
     const prompt = `
             Analyze the user's response for the outreach regarding: "${reachOut.queryId.query}".
             Based on the conversation history, determine if they qualify.
@@ -356,10 +355,33 @@ class LLMService {
     return response;
   }
 
+  async genrateQuerySummary(reachouts, messageHistory) {
+    const sysPrompt = await getSysPrompt("query_summary");
+    const response = await generateReply(
+      "genrating the query summary",
+      `${reachouts} Summarize the above in the required format accoording to the system prompt only.`,
+      messageHistory,
+      sysPrompt
+    );
+    return response;
+  }
+
+  async genrateTheReachOutInfo(user, query,type){
+    const sysPrompt = await getSysPrompt("reachout_info");
+    const prompt = type == "ask" ? `genarate reply according to system prompt for following user name:${user.name} and info: ${user.metadata} based on conversation and base on query: ${query.query} and author type: ${query.author_type} based on conversation` : `genarate reply according to system prompt for following user name:${user.name} and info: ${user.metadata}, base on query: ${query.query} and author type: ${query.author_type} based on conversation`
+    const response = await generateReply(
+      "genrating the reachout info",
+      prompt,
+      [],
+      sysPrompt
+    );
+    return response;
+
+  }
+
   async generateGeneralReply(user, prompt, messageHistory) {
     const sysPrompt = await getSysPrompt(user.type);
 
-    
     // 1. Define the tools and functions for this specific call using the imported object.
     const functionDeclarations = [];
     const toolFunctions = {};
@@ -381,6 +403,57 @@ class LLMService {
       toolFunctions
     );
     return response;
+  }
+}
+
+
+async function generateReply(
+  jid,
+  messageContent,
+  context,
+  sysPrompt,
+  tools = {},
+  toolFunctions = {}
+) {
+  console.log(`Generating reply for ${jid}...`);
+  const history = [...context];
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-pro",
+      systemInstruction: sysPrompt,
+      tools,
+    });
+
+    const chat = model.startChat({ history });
+    const result = await chat.sendMessage(messageContent);
+    const response = result.response;
+    const functionCalls = response.functionCalls();
+    console.log("functionCalls", functionCalls);
+
+    if (functionCalls && functionCalls.length > 0) {
+      console.log("Gemini requested a tool call:", functionCalls[0].name);
+      const call = functionCalls[0];
+      console.log("Calls", call);
+
+      if (toolFunctions[call.name]) {
+        // The arguments from the AI are in call.args
+        console.log(call.args);
+        call.args.jid = jid; // Always pass the jid to the tool
+        const apiResponse = await toolFunctions[call.name](call.args);
+        // const result2 = await chat.sendMessage([
+        //   { functionResponse: { name: call.name, response: apiResponse } },
+        // ]);
+        // return result2.response.text();
+      } else {
+        return "Sorry, I tried to use a tool that I don't recognize.";
+      }
+    }
+    console.log(`Generated reply for ${jid}: ${response.text()}`);
+    return response.text();
+  } catch (error) {
+    console.error("Error during Gemini AI call:", error);
+    return `Sorry, I had a little trouble thinking. Could you please try again? \n ${error}`;
   }
 }
 

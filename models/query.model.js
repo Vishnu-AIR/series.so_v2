@@ -15,6 +15,17 @@ const querySchema = new Schema(
       required: true,
     },
 
+
+    totalCount:{
+      type: Number,
+      default: 0,
+    },
+
+    count:{
+      type: Number,
+      default: 0,
+    },
+
     /**
      * The text content of the query.
      */
