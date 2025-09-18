@@ -17,7 +17,7 @@ const messageSchema = new mongoose.Schema({
   hasMedia: { type: Boolean, default: false },
   mediaType: { 
     type: String, 
-    enum: ["image", "video", "audio", "document", "sticker", "url", "null"], 
+    enum: ["image", "video", "audio", "document", "sticker", "url", "linkedinUrl", "null"], 
     default: "null" 
   },
   mediaUrl: { type: String, default: null },
