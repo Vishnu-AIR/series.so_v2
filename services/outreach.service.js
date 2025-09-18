@@ -360,6 +360,9 @@ class OutreachService {
 
     if (isQualify === "qualify") {
       await this.reachOutService.updateReachOutStatus(reachOut._id, "qualify");
+      userInfo = await this.llmService.genrateTheReachOutInfo(user, reachOut.queryId.query, reachOut.type, reachOut.queryId.author_type);
+      await this.reachOutService.updateReachOutUserInfo(reachOut._id, userInfo);
+      
     } else if (isQualify === "fail") {
       await this.reachOutService.updateReachOutStatus(reachOut._id, "fail");
     } else {
@@ -439,7 +442,7 @@ Performing hybrid search for candidates..`,
    * @returns {boolean} True if a query was processed, false otherwise.
    */
   async checkQuery(user) {
-    const queries = await this.queryService.getHeldQueryByAuthorId(user.jid);
+    const queries = await this.queryService.getHeldQeryByAuthorId(user.jid);
     if (!queries || queries.length < 1) return false;
     for (const query of queries) {
       const reachouts = this.reachOutService.findReachOutsByQueryIdAndStatus(
@@ -455,7 +458,7 @@ Performing hybrid search for candidates..`,
             },
           ],
         },
-      ]);
+      ], query.author_type);
       await this.userService.saveMessage({
         jid: user.jid,
         by: "model",
@@ -699,7 +702,7 @@ Performing hybrid search for candidates..`,
       ) {
         type = "ask";
       }else{
-        userInfo = await this.llmService.genrateTheReachOutInfo(user, query, type);
+        userInfo = await this.llmService.genrateTheReachOutInfo(user, query, type, query.author_type);
       }
       console.log(
         `[makeReachOut] Determined reachOut type: ${type} for user ID: ${user._id}`

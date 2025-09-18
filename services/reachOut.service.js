@@ -58,7 +58,19 @@ class ReachOutService {
    * @returns {Promise<Array<Object>>} A list of matching reachOuts.
    */
   async findReachOutsByQueryIdAndStatus(queryId, status) {
-    return ReachOut.find({ queryId: queryId, status: status }).populate("queryId").lean();
+    return ReachOut.find({ queryId: queryId, status: status })
+      .populate("queryId")
+      .lean();
+  }
+
+  /**
+   * Updates the userInfo field for a specific ReachOut.
+   * @param {string} reachOutId - The MongoDB ObjectId of the reachOut.
+   * @param {string} userInfo - The new userInfo string to set.
+   * @returns {Promise<Object>} The updated reachOut document.
+   */
+  async updateReachOutUserInfo(reachOutId, userInfo) {
+    return ReachOut.findByIdAndUpdate(reachOutId, { userInfo }, { new: true });
   }
 
   /**

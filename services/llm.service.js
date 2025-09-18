@@ -836,8 +836,8 @@ class LLMService {
     return response;
   }
 
-  async genrateQuerySummary(reachouts, messageHistory) {
-    const sysPrompt = await getSysPrompt("query_summary");
+  async genrateQuerySummary(reachouts, messageHistory, ptype) {
+    const sysPrompt = await getSysPrompt(ptype=="hr"?"hr_summary": "client_summary");
     const response = await generateReply(
       "genrating the query summary",
       `${reachouts} Summarize the above in the required format accoording to the system prompt only.`,
@@ -847,8 +847,8 @@ class LLMService {
     return response;
   }
 
-  async genrateTheReachOutInfo(user, query,type){
-    const sysPrompt = await getSysPrompt("reachout_info");
+  async genrateTheReachOutInfo(user, query,type, ptype){
+    const sysPrompt = await getSysPrompt(ptype=="hr"?"roc_info": "rof_info");
     const prompt = type == "ask" ? `genarate reply according to system prompt for following user name:${user.name} and info: ${user.metadata} based on conversation and base on query: ${query.query} and author type: ${query.author_type} based on conversation` : `genarate reply according to system prompt for following user name:${user.name} and info: ${user.metadata}, base on query: ${query.query} and author type: ${query.author_type} based on conversation`
     const response = await generateReply(
       "genrating the reachout info",
