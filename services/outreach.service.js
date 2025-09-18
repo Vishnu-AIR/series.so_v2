@@ -48,56 +48,29 @@ class OutreachService {
       mediaType: messageData.mediaType || "null",
       mediaUrl: messageData.mediaUrl || null, //need to be done from s3/aws
     });
-    if (messageData.isMedia && messageData.mediaType == "document") {
-      //wait a min i am checking the document - send this mssg
-      const waitMssg =
-        "Wait a min... I am checking the data in the doc you sent";
-      this.whatsAppService.sendMessage(messageData.jid, waitMssg);
-      await this.userService.saveMessage({
-        jid: user.jid,
-        by: "model",
-        type: user.type,
-        content: waitMssg,
-      });
-
-      //check for the data inside
-      const resumeJson = await this.llmService.classifyDocumentText(
-        messageData.jid,
-        messageData.retrievedText
-      );
-      if (resumeJson.isResume) {
-        const gotResumeMssg =
-          "Yes, we have recieved your resume, thnx for sharing that";
-        this.whatsAppService.sendMessage(messageData.jid, gotResumeMssg);
-        await this.userService.saveMessage({
-          jid: user.jid,
-          by: "model",
-          type: user.type,
-          content: gotResumeMssg,
-        });
-        await this.userService.saveMessage({
-          jid: user.jid,
-          by: "user",
-          type: user.type,
-          content: "Ok! So now you have got my resume, whats the next step?",
-        });
-        //we need to call the vectorFastApi server here
-      } else {
-        const notResumeMssg =
-          "Sorry the doc you provided, we were not able to detect if that was your resume, plz try again.";
-        this.whatsAppService.sendMessage(messageData.jid, notResumeMssg);
-        this.userService.saveMessage({
-          jid: user.jid,
-          by: "model",
-          type: user.type,
-          content: notResumeMssg,
-        });
-        return;
-      }
+    
+    if (messageData.isMedia && messageData.mediaType == "linkedinUrl"){
+      const shudContinue = await this.handleLinkedinFlow(messageData,user);
+      if ( !shudContinue ) return;
+    }
+    else if (user.type == "candidate" && messageData.isMedia && messageData.mediaType == "document") {
+      const shudContinue = await this.handleCandidateDocFlow(messageData,user);
+      if ( !shudContinue ) return;
+    }
+    else if ( user.type == "freelancer" && messageData.isMedia && messageData.mediaType == "url" ){
+      const shudContinue = await this.handleFreelancerDataFlow(messageData,user);
+      //await this.whatsAppService.sendMessage(messageData.jid,"hn bhai milgyi teri url");
+      return;
+    }
+    else if ( user.type == "freelancer" && messageData.isMedia && messageData.mediaType == "document" ){
+      const shudContinue = await this.handleCandidateDocFlow(messageData,user);
+      if ( !shudContinue ) return;
     }
 
     // Fetch the user's message history
     const messageHistory = await this.userService.getMessageHistory(user.jid);
+    // console.log(JSON.stringify(messageHistory.reverse(), null, 2));
+    // return;
     // Now route based on user type
     let prompt = messageData.content;
     if (user.type === "rof" || user.type === "roc") {
@@ -128,6 +101,166 @@ class OutreachService {
       content: llmRes,
     });
     return llmRes;
+  }
+
+  async handleLinkedinFlow(messageData,user){
+    return true;
+    //to be implemented
+    const messageHistory = await this.userService.getMessageHistory(user.jid);
+    const waitMssg =
+      "Wait a min... I am checking the data in your linkedin that you sent";
+    this.whatsAppService.sendMessage(messageData.jid, waitMssg);
+    await this.userService.saveMessage({
+      jid: user.jid,
+      by: "model",
+      type: user.type,
+      content: waitMssg,
+    });
+
+    //check for the data inside
+    const linkedinJson = await this.llmService.classifyLinkedinMatchFromHistory(
+      messageData.jid,
+      messageHistory.reverse(),
+      messageData.content
+    )
+    if (linkedinJson.isLinkedinUserSame) {
+      const gotLinkedinMssg =
+        "Yes, we have recieved your linkedin, thnx for sharing that";
+      const gotLinkedinMssgToSave =
+        gotLinkedinMssg + JSON.stringify(linkedinJson);
+      this.whatsAppService.sendMessage(messageData.jid, gotLinkedinMssg);
+      await this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: user.type,
+        content: gotLinkedinMssgToSave,
+      });
+      await this.userService.saveMessage({
+        jid: user.jid,
+        by: "user",
+        type: user.type,
+        content: "Ok! So now you have got my linkedin, whats the next step?",
+      });
+      //we need to call the vectorFastApi server here
+    } else {
+      const notLinkedinMssg =
+        "Sorry the doc you provided, we were not able to detect if that was your linkedin, plz try again.";
+      this.whatsAppService.sendMessage(messageData.jid, notLinkedinMssg);
+      this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: user.type,
+        content: notLinkedinMssg,
+      });
+      return false;
+    }
+    return true;
+  }
+
+  async handleCandidateDocFlow(messageData,user){
+    //wait a min i am checking the document - send this mssg
+    const messageHistory = await this.userService.getMessageHistory(user.jid);
+    const waitMssg =
+      "Wait a min... I am checking the data in the doc you sent";
+    this.whatsAppService.sendMessage(messageData.jid, waitMssg);
+    await this.userService.saveMessage({
+      jid: user.jid,
+      by: "model",
+      type: user.type,
+      content: waitMssg,
+    });
+
+    //check for the data inside
+    const resumeJson = await this.llmService.classifyDocumentText(
+      messageData.jid,
+      messageData.retrievedText,
+      messageHistory.reverse()
+    )
+    if (resumeJson.isResume) {
+      const gotResumeMssg =
+        "Yes, we have recieved your resume, thnx for sharing that";
+      const gotResumeMssgToSave =
+        gotResumeMssg + JSON.stringify(resumeJson);
+      this.whatsAppService.sendMessage(messageData.jid, gotResumeMssg);
+      await this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: user.type,
+        content: gotResumeMssgToSave,
+      });
+      await this.userService.saveMessage({
+        jid: user.jid,
+        by: "user",
+        type: user.type,
+        content: "Ok! So now you have got my resume, whats the next step?",
+      });
+      //we need to call the vectorFastApi server here
+    } else {
+      const notResumeMssg =
+        "Sorry the doc you provided, we were not able to detect if that was your resume, plz try again.";
+      this.whatsAppService.sendMessage(messageData.jid, notResumeMssg);
+      this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: user.type,
+        content: notResumeMssg,
+      });
+      return false;
+    }
+    return true;
+  }
+
+  async handleFreelancerDataFlow(messageData,user){
+    //wait a min i am checking the document - send this mssg
+    const messageHistory = await this.userService.getMessageHistory(user.jid);
+    const waitMssg =
+      "Wait a min... I am checking the data in the url you sent";
+    await this.whatsAppService.sendMessage(messageData.jid, waitMssg);
+    await this.userService.saveMessage({
+      jid: user.jid,
+      by: "model",
+      type: user.type,
+      content: waitMssg,
+    });
+    console.log(JSON.stringify(messageHistory.reverse(), null, 2));
+    const resultAfterUrlCheck = await this.llmService.classifyPortfolioMatchFromHistory(
+      messageData.jid
+      ,messageHistory.reverse()
+      ,messageData.content
+    );
+    if ( resultAfterUrlCheck.isPortfolioOfUser ){
+      const gotPortfolioMssg =
+        "Yes, we have recieved your portfolio, thnx for sharing that" + JSON.stringify(resultAfterUrlCheck);
+      const gotPortfolioMssgToSave =
+        gotPortfolioMssg + JSON.stringify(resultAfterUrlCheck);
+      this.whatsAppService.sendMessage(messageData.jid, gotResumeMssg);
+      await this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: user.type,
+        content: gotPortfolioMssgToSave,
+      });
+      await this.userService.saveMessage({
+        jid: user.jid,
+        by: "user",
+        type: user.type,
+        content: "Ok! So now you have got my portfolio, whats the next step?",
+      });
+      //we need to call the vectorFastApi server here
+    }
+    else{
+      const notPortfolioMssg =
+        "Sorry the url you provided, it seems this was not your portfolio, plz try again.";
+      this.whatsAppService.sendMessage(messageData.jid, notPortfolioMssg);
+      this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: user.type,
+        content: notPortfolioMssg,
+      });
+      return false;
+    }
+    return true;
   }
 
   // Tool handler for ending a session and updating user type
@@ -177,6 +310,14 @@ class OutreachService {
           console.warn(`Unhandled user type: ${userType}`);
           result = "I'm not sure what you mean.";
       }
+      const sessionChangedText = `Session changed to ${newUserType}`;
+      await this.whatsAppService.sendMessage(jid,sessionChangedText)
+      this.userService.saveMessage({
+        jid: user.jid,
+        by: "model",
+        type: newUserType,
+        content: sessionChangedText,
+      });
       return { success: true, status: result };
     } catch (error) {
       console.error(

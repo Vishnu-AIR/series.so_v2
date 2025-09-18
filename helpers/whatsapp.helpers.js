@@ -35,6 +35,15 @@ whatsAppHelper.detectMessagemediaType = function(message) {
         '';
 
     if (textContent.trim()) {
+        const linkedinRegex = /(https?:\/\/(www\.)?linkedin\.com\/[^\s]+)/i;
+        if (linkedinRegex.test(textContent)) {
+          return { isMedia: true, mediaType: 'linkedinUrl' };
+        }
+
+        const urlRegex = /(https?:\/\/[^\s]+)/gi;
+        if (urlRegex.test(textContent)) {
+            return { isMedia: true, mediaType: 'url' };
+        }
         return { isMedia: false, mediaType: 'null' };
     }
 
