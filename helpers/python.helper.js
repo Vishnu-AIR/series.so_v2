@@ -8,6 +8,12 @@ const FormData = require('form-data');
 
 const pythonHelper = {};
 
+pythonHelper.index_map = {
+  "candidate_index" : "1",
+  "freelancer_index" : "2",
+  "test_index" : "3",
+}
+
 const BASE_URL = process.env.BASE_URL;
 const ENDPOINT = process.env.SINGLE_FILE_UPLOAD_API_ENDPOINT;
 const API_KEY = process.env.X_API_KEY;
@@ -31,7 +37,7 @@ if (!BASE_URL || !ENDPOINT || !API_KEY) {
  */
 pythonHelper.uploadSingleFile = async function ({
   filePath,
-  isCandidate,
+  index_id,
   keyword = "string",
   extraFields = {},
   timeoutMs = 60000,
@@ -54,7 +60,7 @@ pythonHelper.uploadSingleFile = async function ({
 
   // standard fields (based on example curl)
   if (typeof keyword !== 'undefined') form.append('keyword', String(keyword));
-  if (typeof isCandidate !== 'undefined') form.append('isCandidate', String(isCandidate));
+  if (typeof index_id !== 'undefined') form.append('index_id', String(index_id));
 
   // add any other fields
   for (const [k, v] of Object.entries(extraFields || {})) {
@@ -77,7 +83,7 @@ pythonHelper.uploadSingleFile = async function ({
     });
     if ( resp.status == 200 ){
         await fsp.unlink(resolved);
-        console.log(`File deleted: ${messageData.filePath}`);
+        console.log(`File deleted: ${filePath}`);
     }
     // Return the body (attempt to parse JSON)
     return {

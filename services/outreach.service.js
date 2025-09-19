@@ -207,7 +207,7 @@ class OutreachService {
       });
       pythonHelper.uploadSingleFile({
         filePath: messageData.filePath,
-        isCandidate: true
+        index_id: pythonHelper.index_map["candidate_index"]
       })
     } else {
       const notResumeMssg =
