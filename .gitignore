@@ -36,6 +36,7 @@ dump/
 
 # Optional: ignore uploads if you store media
 uploads/
+static/
 
 # Optional: PM2 or nodemon logs
 pids/
